@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[oc]
+*.egg-info/
+build/
+dist/
+wheels/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+data/gmgn.cookie
+*.cookie
+wallets.json
+funders.json
+
+# Runtime / research data
+data/*.db
+data/*.db-*
+data/logs/
+data/*.log
+data/paper_signals.csv
+data/auto_discover*.json
+data/*_report*.json
+data/walk_forward*.json
+data/prove*.json
+data/funder_*.json
+data/param_sweep*.json
+data/exit_compare*.json
+data/*_backtest*.json
+data/*_run*.log
+data/bt_*.log
+data/all_mints.txt
+data/new_mints.txt
+data/run_mints.txt
+data/test3.txt
+
+# Local editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

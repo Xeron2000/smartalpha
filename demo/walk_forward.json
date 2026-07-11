@@ -1,0 +1,304 @@
+{
+  "split_mode": "chronological",
+  "train_ratio": 0.7,
+  "train_days": 7,
+  "test_days": 7,
+  "anchor_ts": 1783180912,
+  "train_window_unix": [
+    1783080130,
+    1783131256
+  ],
+  "test_window_unix": [
+    1783131404,
+    1783142353
+  ],
+  "train_mints": [
+    "8R3eqFSPYa5Gs3PJCha6qv9VTpWmRgdmphXsHFjkpump",
+    "96X4zg5T4NFWzTVFXHsadvYbxbzFX2Rqt3GXUv92pump",
+    "BBhHEEs8bCPchS8S8EX744ExVrMD9xjGy8CXepctpump",
+    "7szutJHnYxPLxUgJrtXxzAiA5fYU5rmWQ47nT1Epump",
+    "gLWXWsdtGv3PwpFcxxyFDjvABAFeUKV3HkL88Bxpump",
+    "J9xS5vH4W9WnxtbJD4AshJsmHLniPFDq8vXa556apump",
+    "FJSKRhn5ZGtv66HtgaqVY9oNsV2KeynngLTq6PX4pump",
+    "BK6ncKmVabDGySPbTySrBhoGgfk5QC1JAgLHRTchpump",
+    "CdB3zVKw6xwDAkR3xEjfJYYTfyMHmp8jWCPBkns3WCCQ",
+    "CxQrw8A1ZrXZz36PKvDUNXV1ZXkSL8p2iMrb37wJpump",
+    "GaZb3DE2U3Jcjx7ddAVwobsBKnCaDoJWLbzTvJYhpump",
+    "2QmeV9z32WYmKexeb3YbxQBCL72dxcQcc8wQNeYnpump",
+    "3ybbPuf8HJsMG85WaQweh7rr6BhqHNxtKXCQzk1wpump",
+    "9MoGGUj79ZoSfumCpD7m7SnXVinR2sAp2FGAe5Atpump"
+  ],
+  "test_mints": [
+    "FZQJUoWEMRCNTnWj2aAizsFrYL6JUJFBy9zaJex3pump",
+    "FnvuzMWNLFJG5truGFS8H9Nd2MjCJ6oqkDhbVK2rpump",
+    "oJpjDR1feSgdWQBZaVGRsyEmkJvaaxJm2WLSW5opump",
+    "AqWoVsb3jPksi3DEaTrMHBzfGct25nWnqhntDf9vpump",
+    "5NgaVXHoikb9e326MSCwo44DXKGuPiKVt9q9Tm51pump",
+    "5u83eeMKS5drqAdchhJQeUpt7x4DNaU7ZBnaMZjUpump"
+  ],
+  "skipped_no_pair_created_at": [],
+  "train_funders": [
+    {
+      "address": "iGdFcQoyR2MwbXMHQskhmNsqddZ6rinsipHc4TNSdwu",
+      "label": "cross-5-mints",
+      "weight": 1.575,
+      "mint_count": 5,
+      "buyer_count": 4,
+      "mints": [
+        "3ybbPuf8HJsMG85WaQweh7rr6BhqHNxtKXCQzk1wpump",
+        "8R3eqFSPYa5Gs3PJCha6qv9VTpWmRgdmphXsHFjkpump",
+        "96X4zg5T4NFWzTVFXHsadvYbxbzFX2Rqt3GXUv92pump",
+        "CdB3zVKw6xwDAkR3xEjfJYYTfyMHmp8jWCPBkns3WCCQ",
+        "CxQrw8A1ZrXZz36PKvDUNXV1ZXkSL8p2iMrb37wJpump"
+      ],
+      "solscan": "https://solscan.io/account/iGdFcQoyR2MwbXMHQskhmNsqddZ6rinsipHc4TNSdwu",
+      "quality": {
+        "mint_outcomes": 5,
+        "win_rate": 0.0,
+        "median_h24_pct": -77.3,
+        "rug_rate": 0.2
+      }
+    },
+    {
+      "address": "A77HErqtfN1hLLpvZ9pCtu66FEtM8BveoaKbbMoZ4RiR",
+      "label": "cross-3-mints",
+      "weight": 0.612,
+      "mint_count": 3,
+      "buyer_count": 4,
+      "mints": [
+        "96X4zg5T4NFWzTVFXHsadvYbxbzFX2Rqt3GXUv92pump",
+        "BK6ncKmVabDGySPbTySrBhoGgfk5QC1JAgLHRTchpump",
+        "J9xS5vH4W9WnxtbJD4AshJsmHLniPFDq8vXa556apump"
+      ],
+      "solscan": "https://solscan.io/account/A77HErqtfN1hLLpvZ9pCtu66FEtM8BveoaKbbMoZ4RiR",
+      "quality": {
+        "mint_outcomes": 3,
+        "win_rate": 0.0,
+        "median_h24_pct": -95.5,
+        "rug_rate": 0.667
+      }
+    },
+    {
+      "address": "AC5RDfQFmDS1deWZos921JfqscXdByf8BKHs5ACWjtW2",
+      "label": "cross-3-mints",
+      "weight": 1.225,
+      "mint_count": 3,
+      "buyer_count": 2,
+      "mints": [
+        "7szutJHnYxPLxUgJrtXxzAiA5fYU5rmWQ47nT1Epump",
+        "96X4zg5T4NFWzTVFXHsadvYbxbzFX2Rqt3GXUv92pump",
+        "J9xS5vH4W9WnxtbJD4AshJsmHLniPFDq8vXa556apump"
+      ],
+      "solscan": "https://solscan.io/account/AC5RDfQFmDS1deWZos921JfqscXdByf8BKHs5ACWjtW2",
+      "quality": {
+        "mint_outcomes": 3,
+        "win_rate": 0.333,
+        "median_h24_pct": -45.97,
+        "rug_rate": 0.333
+      }
+    },
+    {
+      "address": "J2XCpwkuvv9XWkPdR7NZyBhajaXA3nt5RGtCnG3JtYiz",
+      "label": "cross-3-mints",
+      "weight": 0.612,
+      "mint_count": 3,
+      "buyer_count": 1,
+      "mints": [
+        "3ybbPuf8HJsMG85WaQweh7rr6BhqHNxtKXCQzk1wpump",
+        "BK6ncKmVabDGySPbTySrBhoGgfk5QC1JAgLHRTchpump",
+        "CxQrw8A1ZrXZz36PKvDUNXV1ZXkSL8p2iMrb37wJpump"
+      ],
+      "solscan": "https://solscan.io/account/J2XCpwkuvv9XWkPdR7NZyBhajaXA3nt5RGtCnG3JtYiz",
+      "quality": {
+        "mint_outcomes": 3,
+        "win_rate": 0.0,
+        "median_h24_pct": -91.48,
+        "rug_rate": 0.667
+      }
+    },
+    {
+      "address": "H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS",
+      "label": "cross-2-mints",
+      "weight": 1.05,
+      "mint_count": 2,
+      "buyer_count": 2,
+      "mints": [
+        "96X4zg5T4NFWzTVFXHsadvYbxbzFX2Rqt3GXUv92pump",
+        "J9xS5vH4W9WnxtbJD4AshJsmHLniPFDq8vXa556apump"
+      ],
+      "solscan": "https://solscan.io/account/H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 0.0,
+        "median_h24_pct": -71.26,
+        "rug_rate": 0.5
+      }
+    },
+    {
+      "address": "5VCwKtCXgCJ6kit5FybXjvriW3xELsFDhYrPSqtJNmcD",
+      "label": "cross-2-mints",
+      "weight": 1.05,
+      "mint_count": 2,
+      "buyer_count": 2,
+      "mints": [
+        "3ybbPuf8HJsMG85WaQweh7rr6BhqHNxtKXCQzk1wpump",
+        "BBhHEEs8bCPchS8S8EX744ExVrMD9xjGy8CXepctpump"
+      ],
+      "solscan": "https://solscan.io/account/5VCwKtCXgCJ6kit5FybXjvriW3xELsFDhYrPSqtJNmcD",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 0.0,
+        "median_h24_pct": -80.07,
+        "rug_rate": 0.0
+      }
+    },
+    {
+      "address": "BnnNJJgy9w2MLQ9XBKJKG9FQa2r9qdW7u5VpzEkwUcc3",
+      "label": "cross-2-mints",
+      "weight": 1.725,
+      "mint_count": 2,
+      "buyer_count": 2,
+      "mints": [
+        "BBhHEEs8bCPchS8S8EX744ExVrMD9xjGy8CXepctpump",
+        "gLWXWsdtGv3PwpFcxxyFDjvABAFeUKV3HkL88Bxpump"
+      ],
+      "solscan": "https://solscan.io/account/BnnNJJgy9w2MLQ9XBKJKG9FQa2r9qdW7u5VpzEkwUcc3",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 0.5,
+        "median_h24_pct": 78.58,
+        "rug_rate": 0.0
+      }
+    },
+    {
+      "address": "FpwQQhQQoEaVu3WU2qZMfF1hx48YyfwsLoRgXG83E99Q",
+      "label": "cross-2-mints",
+      "weight": 1.05,
+      "mint_count": 2,
+      "buyer_count": 2,
+      "mints": [
+        "BBhHEEs8bCPchS8S8EX744ExVrMD9xjGy8CXepctpump",
+        "CxQrw8A1ZrXZz36PKvDUNXV1ZXkSL8p2iMrb37wJpump"
+      ],
+      "solscan": "https://solscan.io/account/FpwQQhQQoEaVu3WU2qZMfF1hx48YyfwsLoRgXG83E99Q",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 0.0,
+        "median_h24_pct": -87.3,
+        "rug_rate": 0.5
+      }
+    },
+    {
+      "address": "BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6",
+      "label": "cross-2-mints",
+      "weight": 0.525,
+      "mint_count": 2,
+      "buyer_count": 2,
+      "mints": [
+        "BK6ncKmVabDGySPbTySrBhoGgfk5QC1JAgLHRTchpump",
+        "CxQrw8A1ZrXZz36PKvDUNXV1ZXkSL8p2iMrb37wJpump"
+      ],
+      "solscan": "https://solscan.io/account/BmFdpraQhkiDQE6SnfG5omcA1VwzqfXrwtNYBwWTymy6",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 0.0,
+        "median_h24_pct": -93.49,
+        "rug_rate": 1.0
+      }
+    },
+    {
+      "address": "DPqsobysNf5iA9w7zrQM8HLzCKZEDMkZsWbiidsAt1xo",
+      "label": "cross-2-mints",
+      "weight": 1.05,
+      "mint_count": 2,
+      "buyer_count": 2,
+      "mints": [
+        "3ybbPuf8HJsMG85WaQweh7rr6BhqHNxtKXCQzk1wpump",
+        "CdB3zVKw6xwDAkR3xEjfJYYTfyMHmp8jWCPBkns3WCCQ"
+      ],
+      "solscan": "https://solscan.io/account/DPqsobysNf5iA9w7zrQM8HLzCKZEDMkZsWbiidsAt1xo",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 0.0,
+        "median_h24_pct": -58.88,
+        "rug_rate": 0.0
+      }
+    },
+    {
+      "address": "HuBgvxFsxqgpcyBTvV57Yzi8m7ykwRPxuGjC5WoPGAnW",
+      "label": "cross-2-mints",
+      "weight": 1.05,
+      "mint_count": 2,
+      "buyer_count": 1,
+      "mints": [
+        "8R3eqFSPYa5Gs3PJCha6qv9VTpWmRgdmphXsHFjkpump",
+        "CdB3zVKw6xwDAkR3xEjfJYYTfyMHmp8jWCPBkns3WCCQ"
+      ],
+      "solscan": "https://solscan.io/account/HuBgvxFsxqgpcyBTvV57Yzi8m7ykwRPxuGjC5WoPGAnW",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 0.0,
+        "median_h24_pct": -60.36,
+        "rug_rate": 0.0
+      }
+    },
+    {
+      "address": "CFUa1z3HnY3uNAXr8wff79ZYk2SZ95xhYeV9pcyLG2oP",
+      "label": "cross-2-mints",
+      "weight": 1.725,
+      "mint_count": 2,
+      "buyer_count": 1,
+      "mints": [
+        "2QmeV9z32WYmKexeb3YbxQBCL72dxcQcc8wQNeYnpump",
+        "7szutJHnYxPLxUgJrtXxzAiA5fYU5rmWQ47nT1Epump"
+      ],
+      "solscan": "https://solscan.io/account/CFUa1z3HnY3uNAXr8wff79ZYk2SZ95xhYeV9pcyLG2oP",
+      "quality": {
+        "mint_outcomes": 2,
+        "win_rate": 1.0,
+        "median_h24_pct": 479.0,
+        "rug_rate": 0.0
+      }
+    }
+  ],
+  "test_compare": {
+    "signals": 0,
+    "liquidity_filtered": 2,
+    "modes": {
+      "fixed": {
+        "net_tpsl_sol": 0.0,
+        "wins": 0,
+        "losses": 0
+      },
+      "dynamic": {
+        "net_tpsl_sol": 0.0,
+        "wins": 0,
+        "losses": 0
+      },
+      "scale": {
+        "net_tpsl_sol": 0.0,
+        "wins": 0,
+        "losses": 0
+      },
+      "hybrid": {
+        "net_tpsl_sol": 0.0,
+        "wins": 0,
+        "losses": 0
+      },
+      "ladder": {
+        "net_tpsl_sol": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "notes": [
+      "walk-forward test window; train funders only"
+    ]
+  },
+  "notes": [
+    "split=chronological train_ratio=0.7",
+    "older pairCreatedAt → train, newer → test (OOS on historical batch)",
+    "pairCreatedAt proxy from DexScreener",
+    "train discover: 12 funders from 14 mints"
+  ]
+}

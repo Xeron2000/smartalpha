@@ -1,0 +1,22 @@
+{
+  "mints_scanned": 20,
+  "signals": 4,
+  "skipped": 0,
+  "liquidity_filtered": 4,
+  "position_sol": 0.5,
+  "slippage_pct": 15,
+  "entry_rule": "strict",
+  "min_liquidity_usd": 10000,
+  "notes": [
+    "single-pass compare on same entry signals",
+    "proxy: DexScreener priceChange; not block-0 fill",
+    "generated 2026-07-04"
+  ],
+  "ranked": [
+    {"mode": "scale", "net_tpsl_sol": 2.9569, "wins": 2, "losses": 2},
+    {"mode": "fixed", "net_tpsl_sol": -0.5575, "wins": 1, "losses": 3},
+    {"mode": "dynamic", "net_tpsl_sol": -0.8624, "wins": 0, "losses": 4},
+    {"mode": "hybrid", "net_tpsl_sol": -0.8624, "wins": 0, "losses": 4},
+    {"mode": "ladder", "net_tpsl_sol": -0.8624, "wins": 0, "losses": 4}
+  ]
+}

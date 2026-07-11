@@ -1,0 +1,81 @@
+{
+  "run_date": "2026-07-04",
+  "dataset": "auto_discover 20 mints (GMGN rank, min-gain pipeline)",
+  "mints_scanned": 20,
+  "signals_strict": 5,
+  "signals_legacy": 11,
+  "exit_mode": "hybrid",
+  "position_sol": 0.5,
+  "slippage_pct": 15,
+  "net_h24_sol": 2.798,
+  "net_tpsl_sol": 1.568,
+  "wins_tpsl": 1,
+  "losses_tpsl": 4,
+  "signaled_trades": [
+    {
+      "mint": "7szutJHnYxPLxUgJrtXxzAiA5fYU5rmWQ47nT1Epump",
+      "case": "moon_hit",
+      "hot_organic_buyers": 3,
+      "hot_funders_count": 2,
+      "gain_h24_pct": 1076.0,
+      "pnl_hybrid_sol": 2.349,
+      "exit": "half@h24+h24"
+    },
+    {
+      "mint": "BK6ncKmVabDGySPbTySrBhoGgfk5QC1JAgLHRTchpump",
+      "case": "rug_saved_by_early_cut",
+      "hot_organic_buyers": 4,
+      "hot_funders_count": 4,
+      "gain_h24_pct": -95.5,
+      "pnl_hybrid_sol": -0.1554,
+      "pnl_h24_sol": -0.5559,
+      "exit": "early@h1",
+      "liquidity_usd_approx": 3014,
+      "liquidity_filtered_in_compare_run": true
+    },
+    {
+      "mint": "3ybbPuf8HJsMG85WaQweh7rr6BhqHNxtKXCQzk1wpump",
+      "case": "small_loss",
+      "hot_organic_buyers": 3,
+      "gain_h24_pct": -27.15,
+      "pnl_hybrid_sol": -0.2496,
+      "exit": "early@h1"
+    },
+    {
+      "mint": "FnvuzMWNLFJG5truGFS8H9Nd2MjCJ6oqkDhbVK2rpump",
+      "case": "rug_saved_by_early_cut",
+      "hot_organic_buyers": 2,
+      "gain_h24_pct": -94.18,
+      "pnl_hybrid_sol": -0.1557,
+      "pnl_h24_sol": -0.5503,
+      "exit": "early@h1",
+      "liquidity_usd_approx": 3568,
+      "liquidity_filtered_in_compare_run": true
+    },
+    {
+      "mint": "CdB3zVKw6xwDAkR3xEjfJYYTfyMHmp8jWCPBkns3WCCQ",
+      "case": "stall_exit",
+      "hot_organic_buyers": 2,
+      "gain_h24_pct": -24.35,
+      "pnl_hybrid_sol": -0.2204,
+      "exit": "stall@h6"
+    }
+  ],
+  "missed_moons_strict_filter": [
+    {
+      "mint": "GaZb3DE2U3Jcjx7ddAVwobsBKnCaDoJWLbzTvJYhpump",
+      "gain_h24_pct": 3168.0,
+      "reason": "no hot funder / skip"
+    },
+    {
+      "mint": "5NgaVXHoikb9e326MSCwo44DXKGuPiKVt9q9Tm51pump",
+      "gain_h24_pct": 544.0,
+      "reason": "watch + only 1 hot organic buyer"
+    },
+    {
+      "mint": "FJSKRhn5ZGtv66HtgaqVY9oNsV2KeynngLTq6PX4pump",
+      "gain_h24_pct": 781.0,
+      "reason": "watch + only 1 hot organic buyer"
+    }
+  ]
+}

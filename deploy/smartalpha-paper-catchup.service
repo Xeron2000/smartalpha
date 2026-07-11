@@ -1,0 +1,17 @@
+[Unit]
+Description=smartalpha paper snapshot catch-up (loop)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/smartalpha
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=/bin/bash -c 'while true; do uv run smartalpha paper-log catch-up; sleep 120; done'
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/smartalpha/data/logs/paper_catchup.log
+StandardError=append:%h/smartalpha/data/logs/paper_catchup.log
+
+[Install]
+WantedBy=default.target

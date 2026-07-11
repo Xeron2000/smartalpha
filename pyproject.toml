@@ -1,0 +1,37 @@
+[project]
+name = "smartalpha"
+version = "0.1.0"
+description = "Solana pump.fun smart-money parasite: funder graph, launch watch, paper prove"
+readme = "README.md"
+authors = [{ name = "Xeron", email = "xeron2333@gmail.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "websockets>=16.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9.0",
+]
+
+[project.scripts]
+smartalpha = "smartalpha.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

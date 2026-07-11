@@ -1,0 +1,16 @@
+{
+  "wallets": [
+    {
+      "address": "REPLACE_WITH_SMART_MONEY_WALLET_1",
+      "tier": "accumulator",
+      "weight": 1.2,
+      "label": "example-accumulator"
+    },
+    {
+      "address": "REPLACE_WITH_SMART_MONEY_WALLET_2",
+      "tier": "sniper",
+      "weight": 1.0,
+      "label": "example-sniper"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# 涨过的 pump.fun token mint 地址，一行一个
+# 从 DexScreener / GMGN 复制 mint（不是 ticker 名字）
+#
+# 示例（请替换成真实地址）:
+# 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+# AnotherMintAddress...
