@@ -10,7 +10,9 @@ dependencies = [
     "websockets>=16.0",
 ]
 
-[project.optional-dependencies]
+# dev tooling 用 dependency-groups(uv sync 默认安装);optional-dependencies
+# 是发布 extras,uv sync 不会装 → CI 里 pytest 不存在。
+[dependency-groups]
 dev = [
     "pytest>=8.0",
     "ruff>=0.9.0",
