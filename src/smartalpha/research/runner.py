@@ -10,36 +10,43 @@ def _true_robustness(hypo: dict, base_report: dict, settings: Settings | None, d
     """Re-execute strategy under perturbations; not a coefficient multiply."""
     base_net = float(base_report.get("best_net_tpsl_sol", 0))
     results: dict[str, float | bool] = {}
-    # Each perturbation re-runs the experiment (or walk_forward) with varied params
-    perturbations = [
-        ("slippage_10pct", {"backtest_slippage": 0.10}),
-        ("slippage_20pct", {"backtest_slippage": 0.20}),
-        ("window_shift", {"train_ratio": 0.6}),  # simulate different split
-        ("threshold_perturb", {"min_hot": 1}),  # simulate threshold -1
-    ]
-    for name, overrides in perturbations:
+    # Each perturbation re-runs with varied params via real execution
+    for name in ("slippage_10pct", "slippage_20pct", "window_shift", "threshold_low", "threshold_high"):
         try:
-            # clone settings with overrides
             s = Settings()
-            for k, v in overrides.items():
-                if hasattr(s, k):
-                    setattr(s, k, v)
-                elif k == "min_hot":
-                    # for threshold perturb, we adjust hypo entry_rule threshold via experiment
-                    # live rerun via experiment with different min_hot
-                    from smartalpha.research.experiments import get_experiment
+            train_ratio = 0.7
+            hypo_variant = dict(hypo)
+            if name == "slippage_10pct":
+                s.backtest_slippage = 0.10
+            elif name == "slippage_20pct":
+                s.backtest_slippage = 0.20
+            elif name == "window_shift":
+                train_ratio = 0.6
+            elif name == "threshold_low":
+                # lower threshold: Funder hot2->1, Holder top10 0.4->0.5, Wallet fresh2->1
+                hypo_variant["_threshold"] = "low"
+            elif name == "threshold_high":
+                hypo_variant["_threshold"] = "high"
+            # re-execute via experiment with varied settings
+            if name in ("window_shift", "threshold_low", "threshold_high"):
+                from smartalpha.research.experiments import (
+                    _run_walk_forward_with_filter,
+                    get_experiment,
+                )
 
-                    exp = get_experiment(hypo.get("name", ""))
-                    # for fresh/wallet age etc., we simulate by re-running with same but mark perturbed
-                    # For V1, we just re-run historical with same settings but record as perturbed
-                    pass
-            # re-execute via experiment with varied settings (both dry_run and live)
-            from smartalpha.research.experiments import get_experiment as _ge
+                exp = get_experiment(hypo.get("name", ""))
+                # For threshold variants, we temporarily patch should_enter thresholds via hypo_variant
+                if "_threshold" in hypo_variant:
+                    rep = _run_walk_forward_with_filter(hypo_variant, settings=s, experiment=exp, train_ratio=train_ratio, dry_run=dry_run)
+                else:
+                    rep = _run_walk_forward_with_filter(hypo, settings=s, experiment=exp, train_ratio=train_ratio, dry_run=dry_run)
+                results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
+            else:
+                from smartalpha.research.experiments import get_experiment as _ge
 
-            exp = _ge(hypo.get("name", ""))
-            rep = exp.run(hypo, settings=s, dry_run=dry_run)
-            # For dry_run, rep is fixture but still via real experiment path (no coefficient)
-            results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
+                exp = _ge(hypo.get("name", ""))
+                rep = exp.run(hypo, settings=s, dry_run=dry_run)
+                results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
         except Exception as exc:
             results[name + "_net"] = 0.0
             results[name + "_error"] = str(exc)  # type: ignore[assignment]
