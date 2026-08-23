@@ -2,51 +2,59 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 from smartalpha.config import Settings
+
+
+@dataclass
+class ExperimentConfig:
+    """True param grid for robustness re-execution (ponytail: 6 explicit configs)."""
+
+    train_ratio: float = 0.70  # base 0.70, window 0.60
+    slippage: float = 0.15  # base 15%, perturbs 10%/20%
+    threshold: str = "base"  # base hot2, low hot1, high hot3
+
+    # 6 configs: base + 5 perturbs (slippage 10/20, window 0.60, threshold low/high)
+    @staticmethod
+    def all_configs() -> list[tuple[str, ExperimentConfig]]:
+        return [
+            ("base", ExperimentConfig(0.70, 0.15, "base")),
+            ("slippage_10pct", ExperimentConfig(0.70, 0.10, "base")),
+            ("slippage_20pct", ExperimentConfig(0.70, 0.20, "base")),
+            ("window_shift", ExperimentConfig(0.60, 0.15, "base")),
+            ("threshold_low", ExperimentConfig(0.70, 0.15, "low")),
+            ("threshold_high", ExperimentConfig(0.70, 0.15, "high")),
+        ]
 
 
 def _true_robustness(hypo: dict, base_report: dict, settings: Settings | None, dry_run: bool) -> dict:
     """Re-execute strategy under perturbations; not a coefficient multiply."""
     base_net = float(base_report.get("best_net_tpsl_sol", 0))
     results: dict[str, float | bool] = {}
-    # Each perturbation re-runs with varied params via real execution
-    for name in ("slippage_10pct", "slippage_20pct", "window_shift", "threshold_low", "threshold_high"):
+    # 6-config true re-execution via ExperimentConfig (base + 5 perturbs)
+    for name, cfg in ExperimentConfig.all_configs():
+        if name == "base":
+            continue  # base already in base_report
         try:
             s = Settings()
-            train_ratio = 0.7
+            s.backtest_slippage = cfg.slippage
+            train_ratio = cfg.train_ratio
             hypo_variant = dict(hypo)
-            if name == "slippage_10pct":
-                s.backtest_slippage = 0.10
-            elif name == "slippage_20pct":
-                s.backtest_slippage = 0.20
-            elif name == "window_shift":
-                train_ratio = 0.6
-            elif name == "threshold_low":
-                # lower threshold: Funder hot2->1, Holder top10 0.4->0.5, Wallet fresh2->1
-                hypo_variant["_threshold"] = "low"
-            elif name == "threshold_high":
-                hypo_variant["_threshold"] = "high"
+            if cfg.threshold != "base":
+                hypo_variant["_threshold"] = cfg.threshold
             # re-execute via experiment with varied settings
-            if name in ("window_shift", "threshold_low", "threshold_high"):
-                from smartalpha.research.experiments import (
-                    _run_walk_forward_with_filter,
-                    get_experiment,
-                )
+            from smartalpha.research.experiments import (
+                _run_walk_forward_with_filter,
+                get_experiment,
+            )
 
-                exp = get_experiment(hypo.get("name", ""))
-                # For threshold variants, we temporarily patch should_enter thresholds via hypo_variant
-                if "_threshold" in hypo_variant:
-                    rep = _run_walk_forward_with_filter(hypo_variant, settings=s, experiment=exp, train_ratio=train_ratio, dry_run=dry_run)
-                else:
-                    rep = _run_walk_forward_with_filter(hypo, settings=s, experiment=exp, train_ratio=train_ratio, dry_run=dry_run)
-                results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
+            exp = get_experiment(hypo.get("name", ""))
+            if cfg.threshold != "base" or name == "window_shift":
+                rep = _run_walk_forward_with_filter(hypo_variant, settings=s, experiment=exp, train_ratio=train_ratio, dry_run=dry_run)
             else:
-                from smartalpha.research.experiments import get_experiment as _ge
-
-                exp = _ge(hypo.get("name", ""))
-                rep = exp.run(hypo, settings=s, dry_run=dry_run)
-                results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
+                rep = exp.run(hypo_variant, settings=s, dry_run=dry_run)
+            results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
         except Exception as exc:
             results[name + "_net"] = 0.0
             results[name + "_error"] = str(exc)  # type: ignore[assignment]

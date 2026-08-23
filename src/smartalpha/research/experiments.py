@@ -433,10 +433,44 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
         {"selected_mints": selected, "priced": priced, "executed": executed, "coverage": round(coverage, 3), "wins": wins, "losses": losses, "experiment": experiment.name, "kline_engine": "30s", "mfe": mfe_val, "mae": mae_val, "maxDD": max_dd},
     )
 
+class BundlerAvoidExperiment(BaseExperiment):
+    name = "bundler_avoid"
+
+    def select_features(self, mint: str, hypo: dict, settings: Settings | None = None) -> dict[str, Any]:
+        dry = bool(hypo.get("_dry_run"))
+        if not dry:
+            try:
+                s = settings or Settings()
+                if s.gmgn_api_key and mint.endswith("pump"):
+                    raise MissingFeatureError(f"HISTORICAL_UNAVAILABLE: bundler snapshot for {mint} at +30s not prospectively captured")
+                raise MissingFeatureError(f"missing gmgn or not pump {mint}")
+            except MissingFeatureError:
+                raise
+            except Exception as exc:
+                raise MissingFeatureError(f"missing bundler feature for {mint}: {exc}") from exc
+        import hashlib
+        h = int(hashlib.sha256((mint + "bundler").encode()).hexdigest(), 16) % 10
+        h2 = int(hashlib.sha256((mint + "bundler2").encode()).hexdigest(), 16) % 10
+        bundler_wallets = h % 3
+        copytrap_risk = "high" if h2 % 4 == 0 else "low"
+        available_at = 30 + (h * 7) % 40
+        observed_at = available_at + 5
+        return {"bundler_wallets": bundler_wallets, "copytrap_risk": copytrap_risk, "mint": mint, "observed_at": observed_at, "available_at": available_at, "as_of_ts": available_at, "reconstructed_at": int(time.time()), "evidence_mode": "synthetic", "source": "bundler"}
+
+    def should_enter(self, features: dict[str, Any], hypo: dict) -> bool:
+        return features.get("bundler_wallets", 1) == 0 and features.get("copytrap_risk") != "high"
+
+    def run(self, hypo: dict, settings: Settings | None = None, dry_run: bool = False) -> ExperimentResult:
+        hypo = dict(hypo)
+        hypo["_dry_run"] = dry_run
+        return _run_walk_forward_with_filter(hypo, settings, experiment=self, dry_run=dry_run)
+
+
 EXPERIMENTS: dict[str, BaseExperiment] = {
     "funder_repeat_hot_2_organic": FunderRepeatExperiment(),
     "early_holder_concentration_low": HolderConcentrationExperiment(),
     "funder_wallet_age_fresh": WalletAgeExperiment(),
+    "bundler_avoid": BundlerAvoidExperiment(),
 }
 
 def get_experiment(name: str) -> BaseExperiment:
