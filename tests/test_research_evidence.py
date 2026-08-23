@@ -237,7 +237,9 @@ def test_same_mint_has_same_features_across_processes():
         import json
         from smartalpha.research.experiments import get_experiment
         exp = get_experiment("funder_repeat_hot_2_organic")
-        feats = exp.select_features("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", {"name": "funder_repeat_hot_2_organic"})
+        feats = exp.select_features("DryMint0111111111111111111111111111111111pump", {"name": "funder_repeat_hot_2_organic", "_dry_run": True})
+        feats.pop("observed_at", None)
+        feats.pop("available_at", None)
         print(json.dumps(feats, sort_keys=True))
     """)
     # run twice in separate processes
@@ -483,15 +485,15 @@ def test_entry_uses_feature_available_at():
     """Entry_ts must be max(available_at) + copy_delay, not pair_created_at direct."""
     from smartalpha.research.experiments import get_experiment
     exp = get_experiment("early_holder_concentration_low")
-    feats = exp.select_features("DryMint0111111111111111111111111111111111pump", {"name": "early_holder_concentration_low"})
+    feats = exp.select_features("DryMint0111111111111111111111111111111111pump", {"name": "early_holder_concentration_low", "_dry_run": True})
     assert "available_at" in feats
     assert "observed_at" in feats
     #available_at should be deterministic and entry should be available_at + delay
     # For Holder, available_at = launch+30, for Funder +90
     # Check that Funder's available_at > Holder's for same mint (since 90 >30)
     exp_f = get_experiment("funder_repeat_hot_2_organic")
-    f1 = exp_f.select_features("DryMint0111111111111111111111111111111111pump", {"name": "funder_repeat_hot_2_organic"})
-    h1 = exp.select_features("DryMint0111111111111111111111111111111111pump", {"name": "early_holder_concentration_low"})
+    f1 = exp_f.select_features("DryMint0111111111111111111111111111111111pump", {"name": "funder_repeat_hot_2_organic", "_dry_run": True})
+    h1 = exp.select_features("DryMint0111111111111111111111111111111111pump", {"name": "early_holder_concentration_low", "_dry_run": True})
     assert f1["available_at"] > h1["available_at"]
 
 

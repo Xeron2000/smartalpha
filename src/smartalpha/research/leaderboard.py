@@ -12,7 +12,10 @@ def build_leaderboard(results: dict[str, dict]) -> list[dict]:
     for name, res in results.items():
         hist = res.get("historical") or res.get("oos") or {}
         rob = res.get("robustness") or {}
-        ev = float(hist.get("best_net_tpsl_sol", 0) or 0) / max(1, int(hist.get("oos_signals", 0)))
+        # EV = net / executed (priced and executed), not net / oos_signals
+        details = hist.get("details") or {}
+        executed = int(details.get("executed", hist.get("oos_signals", 0)) or 0)
+        ev = float(hist.get("best_net_tpsl_sol", 0) or 0) / max(1, executed)
         rows.append(
             {
                 "hypothesis": name,
