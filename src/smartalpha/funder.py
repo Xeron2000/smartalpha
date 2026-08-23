@@ -205,12 +205,12 @@ def dex_pair_meta(mint: str) -> dict | None:
     return out
 
 
-def _kline_snapshot(mint: str) -> dict | None:
+def _kline_snapshot(mint: str, signal_ts: int | None = None) -> dict | None:
     """Try GMGN Kline for price snapshot; returns dict with price_usd/source/observed_at or None."""
     try:
         from smartalpha.providers.gmgn import get_kline_gains
 
-        gains = get_kline_gains(mint)
+        gains = get_kline_gains(mint, signal_ts=signal_ts) if signal_ts else get_kline_gains(mint)
         if gains and gains.get("entry_price"):
             # use entry as t0 proxy; if we have 0-delay price, use entry
             # For live snapshot, use latest close if available
@@ -238,9 +238,9 @@ def _kline_snapshot(mint: str) -> dict | None:
     return None
 
 
-def dex_price_snapshot(mint: str) -> dict | None:
+def dex_price_snapshot(mint: str, signal_ts: int | None = None) -> dict | None:
     # Primary: GMGN Kline (30s/1m) for true latency; fallback: DexScreener
-    snap = _kline_snapshot(mint)
+    snap = _kline_snapshot(mint, signal_ts=signal_ts)
     if snap and snap.get("price_usd") is not None:
         # enrich liquidity from Dex fallback if missing
         meta = dex_pair_meta(mint)
@@ -263,6 +263,28 @@ def dex_price_snapshot(mint: str) -> dict | None:
     }
 
 
+
+def kline_candles(mint: str, signal_ts: int | None = None) -> list[dict] | None:
+    """Fetch raw GMGN Kline candles anchored to signal_ts if given."""
+    try:
+        from smartalpha.providers.gmgn import get_kline
+        if signal_ts is not None:
+            env = get_kline(mint, interval="30s", settings=None, from_ts=signal_ts-60, to_ts=signal_ts+1800)
+            if not env:
+                env = get_kline(mint, interval="1m", settings=None, from_ts=signal_ts-60, to_ts=signal_ts+1800)
+            if env and env.get("data"):
+                kline = env["data"].get("kline") or env["data"].get("list") or []
+                if kline:
+                    return kline
+        # fallback non-anchored
+        # try anchored gains to get candles via provider? fallback to get_kline without signal
+        env = get_kline(mint, interval="30s")
+        if env and env.get("data"):
+            return env["data"].get("kline") or []
+    except Exception:
+        pass
+    return None
+
 def dex_pair_created_at(mint: str) -> int | None:
     meta = dex_pair_meta(mint)
     if not meta:
@@ -271,13 +293,13 @@ def dex_pair_created_at(mint: str) -> int | None:
     return int(ms // 1000) if ms else None
 
 
-def dex_token_outcome(mint: str) -> dict[str, float] | None:
+def dex_token_outcome(mint: str, signal_ts: int | None = None) -> dict[str, float] | None:
     """Primary: GMGN Kline 30s/1m (true latency) → fallback DexScreener."""
     # ponytail: try Kline first for true Entry→90/180/300/900 + MFE/MAE
     try:
         from smartalpha.providers.gmgn import get_kline_gains
 
-        gains = get_kline_gains(mint)
+        gains = get_kline_gains(mint, signal_ts=signal_ts) if signal_ts else get_kline_gains(mint)
         if gains:
             meta = dex_pair_meta(mint)  # still need liquidity/pair age
             out: dict[str, float] = {}

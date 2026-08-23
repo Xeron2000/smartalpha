@@ -68,66 +68,96 @@ def find_candidate_mints(
 
 
 def _from_gmgn(settings: Settings, min_gain_pct: float, limit: int) -> list[CandidateMint]:
-    from smartalpha.providers.gmgn import MissingGMGNKeyError, fetch_json
-
-    # GMGN OpenAPI — no cookie, uses GMGN_API_KEY header
-    try:
-        from smartalpha.providers.gmgn import GMGN_NEW_PATH, GMGN_RANK_PATH
-    except ImportError:
-        return []
+    from smartalpha.providers.gmgn import MissingGMGNKeyError, get_trenches, get_trending
 
     out: list[CandidateMint] = []
     seen: set[str] = set()
 
-    for path, tag in (
-        (GMGN_RANK_PATH, "rank"),
-        (GMGN_NEW_PATH, "new_pairs"),
-    ):
-        try:
-            if tag == "rank":
-                payload = fetch_json(path, {"orderby": "priceChange", "direction": "desc", "limit": limit * 3}, settings=settings)
-            else:
-                payload = fetch_json(path, {"limit": limit * 3, "platforms[]": "pump"}, settings=settings)
-        except MissingGMGNKeyError:
-            return []
-        except Exception:
-            continue
-        if not payload or payload.get("code") not in (0, None):
-            continue
-        data = payload.get("data") or {}
-        rows = data.get("rank") or data.get("pairs") or []
-        for row in rows:
-            mint = _gmgn_mint(row)
-            if not mint or mint in seen:
-                continue
-            gain = _gmgn_gain(row)
-            launchpad = (row.get("launchpad") or row.get("launchpad_platform") or "").lower()
-            if tag == "new_pairs":
-                if not _is_pump_mint(mint) or gain is None:
+    # 1) trending rank — official GET /v1/market/rank
+    try:
+        env = get_trending(chain="sol", interval="1h", limit=limit * 2, settings=settings)
+        if env and env.get("data"):
+            # env data may be list or wrapped
+            data = env["data"]
+            rows = data if isinstance(data, list) else data.get("rank") if isinstance(data, dict) else []
+            if not rows and isinstance(data, dict) and "list" in data:
+                rows = data["list"]
+            for row in rows or []:
+                mint = _gmgn_mint(row)
+                if not mint or mint in seen:
                     continue
-            elif not _is_pump_mint(mint) and "pump" not in launchpad:
-                continue
-            if gain is not None and gain < min_gain_pct:
-                continue
-            seen.add(mint)
-            note = []
-            creator_funder = row.get("fund_from_address")
-            if not creator_funder:
-                creator_funder = (row.get("base_token_info") or {}).get("fund_from_address")
-            if creator_funder:
-                note.append(f"creator_funder={creator_funder[:8]}")
-            out.append(
-                CandidateMint(
-                    mint=mint,
-                    source=f"gmgn:{tag}",
-                    gain_h24_pct=gain,
-                    dex=row.get("exchange") or row.get("launchpad_platform"),
-                    url=f"https://gmgn.ai/sol/token/{mint}",
-                    notes=note,
+                # trending rank has no explicit pump filter, check address suffix
+                if not _is_pump_mint(mint):
+                    # also check launchpad field
+                    lp = (row.get("launchpad") or row.get("launchpad_platform") or "").lower()
+                    if "pump" not in lp:
+                        continue
+                gain = _gmgn_gain(row)
+                if gain is not None and gain < min_gain_pct:
+                    continue
+                seen.add(mint)
+                out.append(
+                    CandidateMint(
+                        mint=mint,
+                        source="gmgn:rank",
+                        gain_h24_pct=gain,
+                        dex=row.get("exchange") or row.get("launchpad_platform") or "pump",
+                        url=f"https://gmgn.ai/sol/token/{mint}",
+                        notes=[f"price_change={gain:.1f}%" if gain else ""],
+                    )
                 )
-            )
-            if len(out) >= limit:
-                return out
+                if len(out) >= limit:
+                    return out
+    except MissingGMGNKeyError:
+        return []
+    except Exception:
+        pass
+
+    # 2) trenches — POST /v1/trenches (new_creation / near_completion / completed)
+    try:
+        env = get_trenches(chain="sol", limit=limit, settings=settings)
+        if env and env.get("data"):
+            data = env["data"]
+            # data may have categories
+            rows = []
+            if isinstance(data, dict):
+                for k in ("new_creation", "near_completion", "completed", "pump"):
+                    v = data.get(k)
+                    if isinstance(v, list):
+                        rows.extend(v)
+                # also handle if data itself is list
+                if not rows and isinstance(data.get("list"), list):
+                    rows = data["list"]
+            elif isinstance(data, list):
+                rows = data
+            for row in rows:
+                mint = _gmgn_mint(row)
+                if not mint or mint in seen:
+                    continue
+                if not _is_pump_mint(mint):
+                    continue
+                gain = _gmgn_gain(row)
+                # trenches may not have gain, allow None for new mints
+                if gain is not None and gain < min_gain_pct and len(out) < limit:
+                    # for trenches, don't filter strictly if gain missing
+                    pass
+                seen.add(mint)
+                out.append(
+                    CandidateMint(
+                        mint=mint,
+                        source="gmgn:trenches",
+                        gain_h24_pct=gain,
+                        dex=row.get("launchpad_platform") or "pump",
+                        url=f"https://gmgn.ai/sol/token/{mint}",
+                    )
+                )
+                if len(out) >= limit:
+                    return out
+    except MissingGMGNKeyError:
+        pass
+    except Exception:
+        pass
+
     return out
 
 
@@ -259,6 +289,7 @@ def _gmgn_gain(row: dict) -> float | None:
     return _float(
         row.get("price_change_percent")
         or row.get("price_change_24h")
+        or row.get("price_change_percent1h")
         or bti.get("price_change_percent")
         or row.get("price_change_percent1h")
     )

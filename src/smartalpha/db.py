@@ -218,11 +218,13 @@ class Store:
         snapshots: dict[str, dict],
         notes: str = "",
     ) -> None:
-        # enforce Research provenance: every snapshot carries source + observed_at
+        # enforce Research provenance: missing source/observed_at is an error — never fabricate
         for _k, snap in (snapshots or {}).items():
             if isinstance(snap, dict):
-                snap.setdefault("source", snap.get("source") or "unknown")
-                snap.setdefault("observed_at", snap.get("observed_at") or int(time.time()))
+                if not snap.get("source"):
+                    raise ValueError(f"snapshot {_k} missing source — provenance required")
+                if not snap.get("observed_at"):
+                    raise ValueError(f"snapshot {_k} missing observed_at — provenance required")
         with self._conn() as c:
             c.execute(
                 """

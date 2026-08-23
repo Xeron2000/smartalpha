@@ -56,7 +56,7 @@ class Settings:
     helius_key: str = _env("HELIUS_API_KEY", "")
     solscan_key: str = _env("SOLSCAN_API_KEY", "")
     gmgn_api_key: str = _env("GMGN_API_KEY", "")
-    gmgn_api_base: str = _env("GMGN_API_BASE", "https://gmgn.ai")
+    gmgn_api_base: str = _env("GMGN_API_BASE", "https://openapi.gmgn.ai")
     telegram_token: str = _env("TELEGRAM_BOT_TOKEN", "")
     telegram_chat: str = _env("TELEGRAM_CHAT_ID", "")
     poll_interval: float = float(_env("POLL_INTERVAL_SEC", "15"))

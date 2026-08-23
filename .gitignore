@@ -24,7 +24,9 @@ data/gmgn.cookie
 wallets.json
 funders.json
 
-# Runtime / research data
+# Runtime / research data — real evidence, do not commit fixtures as truth
+data/research/**
+!data/research/README.md
 data/*.db
 data/*.db-*
 data/logs/

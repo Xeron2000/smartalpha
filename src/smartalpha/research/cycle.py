@@ -21,8 +21,20 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
     mem = load_memory()
     hypos = generate_hypotheses(mem, limit=3)
     write_hypotheses(hypos)
-    results = run_all(hypos, settings=s)
-    snap = capture_launch_snapshots("fixture_mint_1111111111111111111111111111111111", t0=now, settings=s)
+    # Live mode must not silently use fixture — dry_run is the only gate
+    try:
+        results = run_all(hypos, settings=s, dry_run=dry_run)
+    except Exception as exc:
+        # fail-closed: do not produce PROMISING leaderboard from fixture
+        from smartalpha.research.runner import ExperimentError
+
+        err_path = ROOT / "data" / "research" / "runs" / f"run_{now}" / "error.json"
+        err_path.parent.mkdir(parents=True, exist_ok=True)
+        err_path.write_text(json.dumps({"error": str(exc), "type": type(exc).__name__, "dry_run": dry_run, "source": "cycle", "observed_at": now}, indent=2) + "\n")
+        if not dry_run:
+            raise ExperimentError(f"research cycle failed (live, no fixture): {exc}") from exc
+        raise
+    snap = capture_launch_snapshots("fixture_mint_1111111111111111111111111111111111" if dry_run else "live_placeholder", t0=now, settings=s)
     reviews: dict[str, dict] = {}
     redteams: dict[str, dict] = {}
     for h in hypos:
@@ -55,7 +67,7 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
         (run_dir / f"{name}.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
     rows = build_leaderboard(results)
     lb_path = write_leaderboard(rows)
-    bench = run_benchmark(settings=s)
+    bench = run_benchmark(settings=s, dry_run=dry_run)
     bench_path = write_benchmark(bench)
     verdicts = {}
     for h in hypos:

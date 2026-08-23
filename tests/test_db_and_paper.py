@@ -14,9 +14,10 @@ def test_seen_mints_and_paper_upsert(tmp_path: Path):
     store.mark_seen_mint_done("mintA")
     assert store.is_mint_seen("mintA") is True
 
+    now = int(time.time())
     store.upsert_paper_signal(
         mint="mintA",
-        signal_ts=int(time.time()),
+        signal_ts=now,
         creator="c",
         signature="s",
         recommendation="follow_cohort",
@@ -27,8 +28,8 @@ def test_seen_mints_and_paper_upsert(tmp_path: Path):
         strict_signal=True,
         price_usd=1e-6,
         snapshots={
-            "0": {"price_usd": 1e-6},
-            "90": {"price_usd": 1.2e-6},
+            "0": {"price_usd": 1e-6, "source": "test", "observed_at": now},
+            "90": {"price_usd": 1.2e-6, "source": "test", "observed_at": now + 90},
         },
         notes="t",
     )
@@ -48,6 +49,7 @@ def test_export_paper_gain_from_t0(tmp_path: Path):
 
     db = tmp_path / "t.db"
     store = Store(db)
+    now = int(time.time())
     store.upsert_paper_signal(
         mint="m",
         signal_ts=1,
@@ -60,7 +62,7 @@ def test_export_paper_gain_from_t0(tmp_path: Path):
         liquidity_usd=None,
         strict_signal=False,
         price_usd=1.0,
-        snapshots={"0": {"price_usd": 1.0}, "90": {"price_usd": 1.5}},
+        snapshots={"0": {"price_usd": 1.0, "source": "test", "observed_at": now}, "90": {"price_usd": 1.5, "source": "test", "observed_at": now + 90}},
         notes="",
     )
     out = tmp_path / "p.csv"

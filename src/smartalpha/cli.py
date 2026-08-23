@@ -614,8 +614,13 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "research":
         if args.research_cmd == "cycle":
             from smartalpha.research.cycle import run_cycle
+            from smartalpha.research.runner import ExperimentError
 
-            manifest = run_cycle(settings=settings, dry_run=bool(args.dry_run))
+            try:
+                manifest = run_cycle(settings=settings, dry_run=bool(args.dry_run))
+            except ExperimentError as exc:
+                print(json.dumps({"error": str(exc), "type": "ExperimentError", "dry_run": bool(args.dry_run)}, indent=2, ensure_ascii=False))
+                sys.exit(1)
             print(json.dumps(manifest, indent=2, ensure_ascii=False))
         elif args.research_cmd == "benchmark":
             from smartalpha.research.benchmark import run_benchmark, write_benchmark
