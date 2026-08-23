@@ -75,10 +75,15 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
         rt = redteams[name]
         rv = reviews[name]
         oos = results[name]["historical"]
+        details = oos.get("details") or {}
+        priced = int(details.get("priced", oos.get("oos_signals", 0)))
+        coverage = float(details.get("coverage", 1.0))
         if not rv["passed"]:
             verdicts[name] = "FALSIFIED"
         elif rt["verdict"] == "KILLED":
             verdicts[name] = "FALSIFIED"
+        elif priced < 10 or coverage < 0.8:
+            verdicts[name] = "INSUFFICIENT_DATA"
         elif oos.get("oos_signals", 0) >= 10 and oos.get("best_net_tpsl_sol", 0) > 0:
             verdicts[name] = "PROMISING"
         else:
