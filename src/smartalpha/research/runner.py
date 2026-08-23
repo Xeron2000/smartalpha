@@ -33,24 +33,13 @@ def _true_robustness(hypo: dict, base_report: dict, settings: Settings | None, d
                     # for fresh/wallet age etc., we simulate by re-running with same but mark perturbed
                     # For V1, we just re-run historical with same settings but record as perturbed
                     pass
-            # re-execute: for dry_run with fixture, this will still return fixture but via real path
-            if dry_run:
-                # dry-run: simulate re-execution by calling run_historical with same but still via experiment
-                from smartalpha.research.experiments import get_experiment as _ge
+            # re-execute via experiment with varied settings (both dry_run and live)
+            from smartalpha.research.experiments import get_experiment as _ge
 
-                exp = _ge(hypo.get("name", ""))
-                rep = exp.run(hypo, settings=s, dry_run=True)
-                # perturb net slightly to simulate sensitivity, but via re-execution path
-                # use rep's net with small noise to show re-execution happened
-                perturbed = rep.best_net_tpsl_sol * (0.92 if "10pct" in name else 0.78 if "20pct" in name else 0.88)
-                results[name + "_net"] = round(perturbed, 4)
-            else:
-                # live: true re-execution via walk_forward with varied settings
-                from smartalpha.research.experiments import get_experiment as _ge2
-
-                exp = _ge2(hypo.get("name", ""))
-                rep = exp.run(hypo, settings=s, dry_run=False)
-                results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
+            exp = _ge(hypo.get("name", ""))
+            rep = exp.run(hypo, settings=s, dry_run=dry_run)
+            # For dry_run, rep is fixture but still via real experiment path (no coefficient)
+            results[name + "_net"] = round(rep.best_net_tpsl_sol, 4)
         except Exception as exc:
             results[name + "_net"] = 0.0
             results[name + "_error"] = str(exc)  # type: ignore[assignment]

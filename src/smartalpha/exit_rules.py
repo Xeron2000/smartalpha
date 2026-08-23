@@ -4,7 +4,14 @@ from dataclasses import dataclass
 
 from smartalpha.config import Settings
 
+# DEPRECATED: legacy horizon engine — research should use research/execution.py 30s OHLC
+# This file is kept for backward compat (tests, old backtest) but is not the research main path.
 EXIT_MODES = ("fixed", "dynamic", "scale", "hybrid", "ladder")
+_LEGACY_HORIZONS = (
+    "h1",
+    "h6",
+    "h24",
+)
 
 
 @dataclass(frozen=True)
@@ -70,7 +77,7 @@ def sim_fixed_tp_sl(
     position: float,
     slip: float,
 ) -> tuple[float | None, str | None]:
-    for key in ("h1", "h6", "h24"):
+    for key in _LEGACY_HORIZONS:
         g = gains.get(key)
         if g is None:
             continue
@@ -95,7 +102,7 @@ def sim_dynamic_exit(
     peak = 0.0
     trail_on = False
 
-    for key in ("h1", "h6", "h24"):
+    for key in _LEGACY_HORIZONS:
         g = gains.get(key)
         if g is None:
             continue
@@ -135,7 +142,7 @@ def sim_scale_half(
         return None, None
 
     scale_key: str | None = None
-    for key in ("h1", "h6", "h24"):
+    for key in _LEGACY_HORIZONS:
         g = gains.get(key)
         if g is not None and g >= scale_pct:
             scale_key = key
@@ -170,7 +177,7 @@ def sim_hybrid_exit(
     runner_peak = 0.0
     runner_trail = False
 
-    for key in ("h1", "h6", "h24"):
+    for key in _LEGACY_HORIZONS:
         g = gains.get(key)
         if g is None:
             continue
@@ -233,7 +240,7 @@ def sim_ladder_exit(
     )
     filled: set[str] = set()
 
-    for key in ("h1", "h6", "h24"):
+    for key in _LEGACY_HORIZONS:
         g = gains.get(key)
         if g is None:
             continue

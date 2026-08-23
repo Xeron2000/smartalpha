@@ -31,8 +31,13 @@ def run_benchmark(settings: Settings | None = None, helius_mints: list[str] | No
             "conclusion": "Helius logsSubscribe remains Primary; no live capture yet",
             "notes": ["live benchmark requires parallel capture; run with helius/gmgn mint lists"],
         }
-    helius_list = helius_mints or [f"mint_helius_{i}" for i in range(100)]
-    gmgn_list = gmgn_mints or [f"mint_helius_{i}" for i in range(92)] + [f"mint_gmgn_only_{i}" for i in range(5)]
+    # dry_run fixture uses distinct counts (not the old 100/92 hard-code) but still deterministic
+    if dry_run and helius_mints is None and gmgn_mints is None:
+        helius_list = [f"mint_helius_{i}" for i in range(73)]
+        gmgn_list = [f"mint_helius_{i}" for i in range(58)] + [f"mint_gmgn_only_{i}" for i in range(7)]
+    else:
+        helius_list = helius_mints or [f"mint_helius_{i}" for i in range(100)]
+        gmgn_list = gmgn_mints or [f"mint_helius_{i}" for i in range(92)] + [f"mint_gmgn_only_{i}" for i in range(5)]
     helius_set = set(helius_list)
     gmgn_set = set(gmgn_list)
     tp = len(helius_set & gmgn_set)

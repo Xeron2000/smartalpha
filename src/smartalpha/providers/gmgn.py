@@ -217,49 +217,6 @@ def get_kline(
     if isinstance(payload.get("list"), list) and payload["list"]:
         return _envelope({"kline": payload["list"], "interval": resolution, "from": from_ts, "to": to_ts}, "gmgn")
     return None
-    # map interval -> resolution (official uses 30s, 1m, 5m, etc.)
-    resolution = interval if interval in ("30s", "1m", "5m", "15m", "1h", "4h", "1d") else "1m"
-    now = int(time.time())
-    # if from/to not given, derive from limit * resolution window (fallback for dry-run)
-    if from_ts is None or to_ts is None:
-        sec_per = 30 if resolution == "30s" else 60 if resolution == "1m" else 300 if resolution == "5m" else 60
-        # try to fetch last `limit` candles ending at now
-        to_ts = now
-        from_ts = now - limit * sec_per
-    params: dict[str, Any] = {
-        "chain": chain,
-        "address": mint,
-        "resolution": resolution,
-        "from": from_ts,
-        "to": to_ts,
-    }
-    payload = _fetch_json(KLINE_PATH, params, settings=settings, method="GET")
-    if not payload:
-        return None
-    # official: {code:0, data:{list:[{time,open,close,high,low,volume,amount}], ...}} or {list:[]}
-    if payload.get("code") not in (0, None, "0"):
-        # some responses use code 0 or omit
-        if payload.get("code") != 0:
-            return None
-    data = payload.get("data") or payload
-    # data may be {list: [...]} or directly list
-    lst = None
-    if isinstance(data, dict):
-        lst = data.get("list") or data.get("kline") or data.get("data")
-        if lst is None and isinstance(data.get("data"), list):
-            lst = data.get("data")
-        if lst is None:
-            # if data itself is a dict with candles? fallback
-            if isinstance(data, list):
-                lst = data
-    elif isinstance(data, list):
-        lst = data
-    if isinstance(lst, list) and lst:
-        return _envelope({"kline": lst, "interval": resolution, "from": from_ts, "to": to_ts}, "gmgn")
-    # also handle case where payload itself is list wrapper
-    if isinstance(payload.get("list"), list) and payload["list"]:
-        return _envelope({"kline": payload["list"], "interval": resolution, "from": from_ts, "to": to_ts}, "gmgn")
-    return None
 
 
 def _extract_close(candle: Any) -> float | None:

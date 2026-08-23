@@ -117,11 +117,20 @@ def capture_launch_snapshots(mint: str, t0: int | None = None, settings: Setting
             stage.data["observed_at"] = stage.observed_at
         last_obs = stage.observed_at
         out[name] = stage
-    # Also demonstrate reuse of paper helpers (no-op if no Store, but proves integration)
+    # Reuse paper scheduler for real provenance: live mints schedule and catch up via Store
     try:
-        # These calls are no-ops in dry-run but prove we reuse paper logic
-        _ = schedule_paper_snapshots
-        _ = catch_up_paper_snapshots
+        import asyncio
+
+        from smartalpha.config import Settings as _S
+        from smartalpha.db import Store
+
+        store = Store(_S().db_path)
+        if not (mint.startswith("fixture_") or mint.startswith("live_placeholder")):
+            try:
+                asyncio.run(schedule_paper_snapshots(mint, base, store=store))
+            except Exception:
+                pass
+            catch_up_paper_snapshots(store=store)
     except Exception:
         pass
     return out
