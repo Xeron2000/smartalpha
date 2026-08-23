@@ -387,8 +387,8 @@ def test_threshold_perturb_changes_selected_cohort(tmp_path):
         }
         orig.write_text(json.dumps(data))
         exp = get_experiment("funder_repeat_hot_2_organic")
-        # low threshold hot1 vs high hot3 should give different selected counts
-        feats_list = [exp.select_features(m, {"name": "funder_repeat_hot_2_organic"}) for m in mints]
+        # low threshold hot1 vs high hot3 should give different selected counts — must use dry_run for synthetic
+        feats_list = [exp.select_features(m, {"name": "funder_repeat_hot_2_organic", "_dry_run": True}) for m in mints]
         # Count with low vs high
         low_hypo = {"name": "funder_repeat_hot_2_organic", "_threshold": "low"}
         high_hypo = {"name": "funder_repeat_hot_2_organic", "_threshold": "high"}
@@ -407,8 +407,8 @@ def test_threshold_perturb_changes_selected_cohort(tmp_path):
             idx = mints.index(mint) if mint in mints else 0
             return base + idx * 1000
         with patch.object(funder_mod, "dex_pair_created_at", side_effect=fake_created2):
-            res_low = _run_walk_forward_with_filter(low_hypo, settings=None, experiment=exp, train_ratio=0.7)
-            res_high = _run_walk_forward_with_filter(high_hypo, settings=None, experiment=exp, train_ratio=0.7)
+            res_low = _run_walk_forward_with_filter(dict(low_hypo, _dry_run=True), settings=None, experiment=exp, train_ratio=0.7, dry_run=True)
+            res_high = _run_walk_forward_with_filter(dict(high_hypo, _dry_run=True), settings=None, experiment=exp, train_ratio=0.7, dry_run=True)
             assert res_low.oos_signals >= res_high.oos_signals  # low threshold selects >= high
     finally:
         if backup and backup.exists():
@@ -628,13 +628,15 @@ def test_wallet_age_is_computed_at_as_of_time():
         {"signature": "sig1", "blockTime": T0},
         {"signature": "sig2", "blockTime": T0+100},
     ]
-    # wallet_age at as_of should be 1800/3600 =0.5h
-    age_at = wallet_age_hours_at(mock_rpc, "wallet1", as_of, max_pages=1)
+    # wallet_age at as_of should be 1800/3600 =0.5h — new API returns (age, complete)
+    age_res = wallet_age_hours_at(mock_rpc, "wallet1", as_of, max_pages=1)
+    if isinstance(age_res, tuple):
+        age_at, complete = age_res
+    else:
+        age_at, complete = age_res, True
     assert age_at is not None
     assert abs(age_at - 0.5) < 0.01
-    # wallet_age now would be 30 days, not 0.5
-    # Mock for wallet_age_hours (which uses time.time) - we can't easily test without mocking time, but we know it would be large
-    # Just ensure that as_of version is small
+    assert complete is True
     assert age_at < 1.0
 
 
@@ -712,6 +714,62 @@ def test_funder_set_is_frozen_from_train_only():
                 orig.unlink()
             except Exception:
                 pass
+
+
+def test_live_mode_cannot_enable_synthetic_by_mint_name():
+    """P0-1: live Mint... must not enable synthetic — only dry_run=True allows."""
+    from smartalpha.research.experiments import MissingFeatureError, get_experiment
+    exp = get_experiment("funder_repeat_hot_2_organic")
+    # Real-looking mint that starts with Mint must not be synthetic in live
+    mint = "MintAbc1234567890111111111111111111111111pump"
+    # live without dry_run should raise MissingFeatureError, not return synthetic
+    try:
+        exp.select_features(mint, {"name": "funder_repeat_hot_2_organic"})
+        raise AssertionError("live Mint... should not give synthetic, must raise")
+    except MissingFeatureError as e:
+        assert "HISTORICAL" in str(e) or "missing" in str(e).lower() or "helius" in str(e).lower()
+    # same mint with dry_run=True should succeed synthetic
+    feats = exp.select_features(mint, {"name": "funder_repeat_hot_2_organic", "_dry_run": True})
+    assert feats.get("evidence_mode") == "synthetic" or feats.get("source") == "funder"
+    assert "available_at" in feats
+
+
+def test_wallet_age_completeness_flag():
+    """Incomplete wallet history must not be judged fresh."""
+    from unittest.mock import MagicMock
+
+    from smartalpha.funder import wallet_age_hours_at
+    mock_rpc = MagicMock()
+    T0 = 1_000_000
+    as_of = T0 + 3600
+    # Simulate 5 full batches of 100 each (max_pages hit) -> incomplete
+    full_batch = [{"signature": f"sig{i}", "blockTime": T0 + i} for i in range(100)]
+    mock_rpc.get_signatures.return_value = full_batch
+    age, complete = wallet_age_hours_at(mock_rpc, "walletX", as_of, max_pages=5)
+    assert complete is False, "should be incomplete when cap hit with full batch"
+    # Now simulate <100 batch -> complete
+    mock_rpc.get_signatures.return_value = [{"signature": "sig1", "blockTime": T0}]
+    age2, complete2 = wallet_age_hours_at(mock_rpc, "walletY", as_of, max_pages=5)
+    assert complete2 is True
+
+
+def test_reviewer_lineage():
+    """Reviewer must audit selected_mints lineage: available/observed/entry_candle, synthetic gate."""
+    from smartalpha.research.reviewer import review_hypothesis
+    # Build a fake oos with one good signal and one leakage
+    good_feats = {"source": "funder", "evidence_mode": "historical_reconstruction", "available_at": 1000, "as_of_ts": 1000, "reconstructed_at": 2000, "observed_at": 2000}
+    bad_feats = {"source": "synthetic", "evidence_mode": "synthetic", "available_at": 1000, "observed_at": 1000}
+    oos_good = {"train_funders": 3, "details": {"selected_mints": [{"mint": "m1", "features": good_feats, "available_at": 1000, "feature_observed_at": 2000, "as_of_ts": 1000, "reconstructed_at": 2000, "evidence_mode": "historical_reconstruction", "entry_ts": 1005, "entry_candle_ts": 1010}]}}
+    res = review_hypothesis({"name": "funder_repeat_hot_2_organic", "falsification_condition": "x", "features": [], "entry_rule": "y"}, snapshots=None, oos_report=oos_good, dry_run=True)
+    assert res["passed"] is True
+    # live with synthetic should fail
+    oos_bad = {"train_funders": 3, "details": {"selected_mints": [{"mint": "m1", "features": bad_feats, "available_at": 1000, "feature_observed_at": 1000, "evidence_mode": "synthetic", "entry_ts": 1005, "entry_candle_ts": 1010}]}}
+    res2 = review_hypothesis({"name": "funder_repeat_hot_2_organic", "falsification_condition": "x", "features": [], "entry_rule": "y"}, snapshots=None, oos_report=oos_bad, dry_run=False)
+    assert res2["passed"] is False
+    # pre-entry candle should fail
+    oos_pre = {"train_funders": 3, "details": {"selected_mints": [{"mint": "m1", "features": good_feats, "available_at": 1000, "feature_observed_at": 2000, "as_of_ts": 1000, "reconstructed_at": 2000, "evidence_mode": "historical_reconstruction", "entry_ts": 1010, "entry_candle_ts": 1000}]}}
+    res3 = review_hypothesis({"name": "x", "falsification_condition": "x", "features": [], "entry_rule": "y"}, snapshots=None, oos_report=oos_pre, dry_run=True)
+    assert res3["passed"] is False
 
 
 def test_execution_never_uses_pre_entry_candle():

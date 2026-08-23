@@ -40,11 +40,16 @@ def wallet_age_hours(rpc: SolanaRpc, wallet: str, *, max_pages: int = 3) -> floa
     return max(0.0, (time.time() - oldest) / 3600)
 
 
-def wallet_age_hours_at(rpc: SolanaRpc, wallet: str, as_of_ts: int, *, max_pages: int = 5) -> float | None:
-    """Historical wallet age at `as_of_ts`: as_of_ts - first_tx_ts. No future leakage."""
+WalletAgeResult = tuple[float | None, bool]  # wallet_age with complete flag
+
+
+def wallet_age_hours_at(rpc: SolanaRpc, wallet: str, as_of_ts: int, *, max_pages: int = 5) -> WalletAgeResult:
+    """Historical wallet age at `as_of_ts`: as_of_ts - first_tx_ts. No future leakage.
+    Returns (age_hours, complete) where complete=False means pagination cap hit and history may be truncated — wallet_age complete flag."""
     oldest: int | None = None
     before: str | None = None
-    for _ in range(max_pages):
+    complete = True
+    for i in range(max_pages):
         batch = rpc.get_signatures(wallet, before=before, limit=100)
         if not batch:
             break
@@ -53,13 +58,17 @@ def wallet_age_hours_at(rpc: SolanaRpc, wallet: str, as_of_ts: int, *, max_pages
             if bt is None or bt > as_of_ts:
                 continue
             oldest = bt if oldest is None else min(oldest, bt)
-        # stop if oldest batch is already before as_of_ts and we have enough
-        before = batch[-1]["signature"]
+        # if batch size <100 we reached beginning
         if len(batch) < 100:
+            complete = True
             break
+        # if we hit max_pages and still have full batch, history may be truncated
+        if i == max_pages - 1:
+            complete = False
+        before = batch[-1]["signature"]
     if oldest is None:
-        return None
-    return max(0.0, (as_of_ts - oldest) / 3600)
+        return None, complete
+    return max(0.0, (as_of_ts - oldest) / 3600), complete
 
 
 def find_sol_funder(rpc: SolanaRpc, wallet: str, *, scan: int = 15) -> str | None:

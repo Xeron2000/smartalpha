@@ -140,9 +140,9 @@ def run_walk_forward(
         train_funders = enrich_funder_scores(
             dr.recommended,
             mint_gains=train_gains,
-            sleep=0.1 if not train_gains else 0.0,
-            # Discovery gains = true "funded a runner" label; skip live rolling h24
-            fetch_live=not bool(train_gains),
+            sleep=0.0,
+            # Research: never use live today state for train scoring; only outcome before test_window
+            fetch_live=False,
         )
         notes.append(
             f"train discover: {len(train_funders)} funders from {len(train_mints)} mints "

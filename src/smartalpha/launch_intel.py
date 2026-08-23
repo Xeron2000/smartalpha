@@ -35,6 +35,9 @@ class LaunchIntel:
     recommendation: str
     funder_injected: bool = False
     notes: list[str] = field(default_factory=list)
+    window_complete: bool = True
+    as_of_ts: int | None = None
+    launch_ts: int | None = None
 
 
 def analyze_launch(
@@ -60,8 +63,47 @@ def analyze_launch(
         notes.append("no dex pair yet — pre-graduation mint needs gRPC launch feed")
 
     raw_buys: list[BuyerProfile] = []
+    window_complete = True
     if pair:
-        sigs = rpc.get_signatures(pair, limit=max_sigs)
+        # Paginated retrieval to cover launch..as_of window, not just latest 40
+        all_sigs: list[dict] = []
+        before: str | None = None
+        # max_pages to avoid infinite loop, enough to cover 7-day window for active mints
+        max_pages_sig = max(10, (max_sigs // 100) + 5)
+        for _ in range(max_pages_sig):
+            batch = rpc.get_signatures(pair, before=before, limit=100)
+            if not batch:
+                break
+            all_sigs.extend(batch)
+            # check if oldest in batch already <= launch or <= as_of lower bound
+            oldest_bt = None
+            for s in batch:
+                bt = s.get("blockTime")
+                if bt is not None:
+                    oldest_bt = bt if oldest_bt is None else min(oldest_bt, bt)
+            before = batch[-1]["signature"]
+            if len(batch) < 100:
+                break
+            # if we have as_of and launch, stop when we have covered launch
+            if as_of_ts is not None and launch_ts is not None:
+                if oldest_bt is not None and oldest_bt <= launch_ts:
+                    break
+            elif as_of_ts is not None:
+                if oldest_bt is not None and oldest_bt <= as_of_ts - 86400 * 7:
+                    break
+            if len(all_sigs) >= 1000:
+                break
+        else:
+            # hit max_pages without covering window
+            window_complete = False
+        # if we hit cap and last batch was full 100, mark incomplete
+        if len(all_sigs) >= 100 and all_sigs and len(batch) == 100:
+            # we may not have reached launch_ts
+            if as_of_ts is not None and launch_ts is not None:
+                has_launch = any((s.get("blockTime") or 0) <= launch_ts for s in all_sigs)
+                if not has_launch:
+                    window_complete = False
+        sigs = all_sigs[-max_sigs*3:] if len(all_sigs) > max_sigs*3 else all_sigs
         for sig_entry in reversed(sigs):
             if sig_entry.get("err"):
                 continue
@@ -86,6 +128,9 @@ def analyze_launch(
                         slot=slot,
                     )
                 )
+        # if pagination cap hit and we didn't get full window, mark incomplete
+        if not window_complete:
+            notes.append("HISTORICAL_INCOMPLETE: pair signatures not fully backfilled to launch")
 
     # dedupe: first buy per wallet
     first: dict[str, BuyerProfile] = {}
@@ -98,7 +143,15 @@ def analyze_launch(
     funder_map: dict[str, str | None] = {}
     for b in buyers:
         if as_of_ts is not None:
-            b.wallet_age_hours = wallet_age_hours_at(rpc, b.wallet, as_of_ts)
+            age_res = wallet_age_hours_at(rpc, b.wallet, as_of_ts)
+            if isinstance(age_res, tuple):
+                age, complete = age_res
+                # incomplete age cannot be trusted as fresh
+                b.wallet_age_hours = age if complete else None
+                if not complete:
+                    notes.append(f"wallet {b.wallet[:6]} age incomplete")
+            else:
+                b.wallet_age_hours = age_res
         else:
             b.wallet_age_hours = wallet_age_hours(rpc, b.wallet)
         if hot_funders is not None:
@@ -127,6 +180,9 @@ def analyze_launch(
         recommendation=rec,
         funder_injected=hot_funders is not None,
         notes=notes,
+        window_complete=window_complete,
+        as_of_ts=as_of_ts,
+        launch_ts=launch_ts,
     )
 
 

@@ -99,7 +99,7 @@ def capture_launch_snapshots(mint: str, t0: int | None = None, settings: Setting
     for name, delay in STAGES:
         # Real scheduler would check: if now < base + delay: not ready
         # For dry-run with fixture mint, we allow immediate capture (fixture), but for live we enforce
-        if mint.startswith("fixture_") or mint.startswith("live_placeholder"):
+        if mint.startswith("fixture_"):
             stage = capture_stage(mint, name, delay, settings=settings)
             # ensure strictly increasing observed_at even for fixture (same second)
             if stage.observed_at <= last_obs:
@@ -125,7 +125,7 @@ def capture_launch_snapshots(mint: str, t0: int | None = None, settings: Setting
         from smartalpha.db import Store
 
         store = Store(_S().db_path)
-        if not (mint.startswith("fixture_") or mint.startswith("live_placeholder")):
+        if not mint.startswith("fixture_"):
             try:
                 asyncio.run(schedule_paper_snapshots(mint, base, store=store))
             except Exception:

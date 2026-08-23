@@ -12,7 +12,6 @@ from smartalpha.research.memory import load_memory, save_memory
 from smartalpha.research.redteam import redteam_hypothesis
 from smartalpha.research.reviewer import review_hypothesis
 from smartalpha.research.runner import run_all
-from smartalpha.research.snapshot import capture_launch_snapshots
 
 
 def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
@@ -34,13 +33,13 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
         if not dry_run:
             raise ExperimentError(f"research cycle failed (live, no fixture): {exc}") from exc
         raise
-    snap = capture_launch_snapshots("fixture_mint_1111111111111111111111111111111111" if dry_run else "live_placeholder", t0=now, settings=s)
     reviews: dict[str, dict] = {}
     redteams: dict[str, dict] = {}
     for h in hypos:
         oos = results[h["name"]].get("historical")
         rob = results[h["name"]].get("robustness")
-        reviews[h["name"]] = review_hypothesis(h, snapshots=snap, oos_report=oos)
+        # Reviewer directly audits selected_mints lineage, not placeholder snapshot
+        reviews[h["name"]] = review_hypothesis(h, snapshots=None, oos_report=oos, dry_run=dry_run)
         redteams[h["name"]] = redteam_hypothesis(h, oos_report=oos, robustness={"robustness": rob.get("robustness")} if rob else {})
     for name, rep in reviews.items():
         p = ROOT / "data" / "research" / "reviews" / f"{name}.json"

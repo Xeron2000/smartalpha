@@ -106,7 +106,29 @@ def run_robustness(hypo: dict, oos_report: dict | None = None, settings: Setting
 def run_all(hypos: list[dict], settings: Settings | None = None, dry_run: bool = False) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for h in hypos:
-        oos = run_oos(h, settings=settings, dry_run=dry_run)
-        rob = run_robustness(h, oos, settings=settings, dry_run=dry_run)
+        try:
+            oos = run_oos(h, settings=settings, dry_run=dry_run)
+        except Exception as exc:
+            msg = str(exc)
+            if "HISTORICAL_UNAVAILABLE" in msg or "HISTORICAL_INCOMPLETE" in msg or "MISSING_FEATURE" in msg or "missing" in msg.lower():
+                # per-hypothesis insufficient, not whole cycle crash
+                oos = {
+                    "hypothesis": h.get("name"),
+                    "oos_signals": 0,
+                    "best_net_tpsl_sol": 0.0,
+                    "best_win_rate": 0.0,
+                    "train_funders": 0,
+                    "test_mints": 0,
+                    "source": "insufficient",
+                    "observed_at": int(time.time()),
+                    "walk_forward": False,
+                    "details": {"selected_mints": [], "priced": 0, "executed": 0, "coverage": 0.0, "wins": 0, "losses": 0, "experiment": h.get("name"), "kline_engine": "30s", "mfe": 0.0, "mae": 0.0, "maxDD": 0.0, "status": "HISTORICAL_UNAVAILABLE", "error": msg},
+                }
+            else:
+                raise
+        try:
+            rob = run_robustness(h, oos, settings=settings, dry_run=dry_run)
+        except Exception:
+            rob = {"stable": False, "source": "runner", "observed_at": int(time.time()), "error": "robustness_failed"}
         out[h["name"]] = {"historical": oos, "robustness": rob, "source": "runner", "observed_at": int(time.time())}
     return out
