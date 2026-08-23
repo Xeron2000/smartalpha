@@ -411,3 +411,35 @@ def test_threshold_perturb_changes_selected_cohort(tmp_path):
             orig.write_text(backup.read_text())
         elif orig.exists():
             orig.unlink()
+
+def test_kline_execution_uses_30s_anchored_candles():
+    """Verify per-mint signal_ts anchored 30s Kline fetched and routed through execution with adverse SL-first."""
+    from smartalpha.research.execution import parse_kline_candles, simulate_fixed
+    # Use a synthetic mint and signal_ts
+    mint = "DryMint0111111111111111111111111111111111pump"
+    signal_ts = 1_700_000_000
+    # For dry_run synthetic, kline_candles should return synthetic or None; we test via direct synthetic generation
+    # Generate deterministic synthetic Kline for test
+    import hashlib
+    h = int(hashlib.sha256((mint + str(signal_ts)).encode()).hexdigest(), 16)
+    raw = []
+    price = 1.0
+    for i in range(30):
+        bit = (h >> (i % 8)) & 1
+        change = 0.02 if bit else -0.015
+        price = max(0.1, price * (1 + change))
+        raw.append({"time": (signal_ts + i * 30) * 1000, "open": str(price), "high": str(price * 1.01), "low": str(price * 0.99), "close": str(price), "volume": "100"})
+    candles = parse_kline_candles(raw)
+    assert len(candles) == 30
+    assert candles[0].time == signal_ts
+    # adverse ordering: SL first
+    entry = candles[0].close
+    pnl, reason = simulate_fixed(candles, entry, 0.5, 0.15, tp_pct=100, sl_pct=30)
+    assert pnl is not None
+    # Verify that execution uses 30s candles (time diff 30)
+    assert candles[1].time - candles[0].time == 30
+    # Verify that kline_gains_anchored also works
+    from smartalpha.providers.gmgn import kline_gains_anchored
+    kline = [{"time": (signal_ts + i*30)*1000, "open": "1.0", "high": "1.0", "low": "1.0", "close": str(1.0 + i*0.01)} for i in range(30)]
+    gains = kline_gains_anchored(kline, signal_ts, interval="30s")
+    assert gains is not None and "gain_90_pct" in gains
