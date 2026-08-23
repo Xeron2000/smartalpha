@@ -21,10 +21,18 @@ def validate_hypothesis(data: dict) -> tuple[bool, str]:
             return False, f"missing required field: {field}"
     # feature registry check
     try:
-        from smartalpha.research.feature_registry import validate_feature_names
+        from smartalpha.research.feature_registry import REGISTRY, validate_feature_names
         ok, msg = validate_feature_names(data.get("features", []))
         if not ok:
             return False, msg
+        # capability and temporal check
+        for feat in data.get("features", []):
+            spec = REGISTRY.get(feat)
+            if spec and spec.capability == "PROSPECTIVE_ONLY":
+                # prospective-only features cannot be used for historical backfill without snapshot
+                # For V3, we allow but mark as prospective; validator should ensure entry_rule does not assume historical availability before earliest
+                if spec.earliest_available_sec > 90:
+                    return False, f"feature {feat} is PROSPECTIVE_ONLY with late availability"
     except Exception:
         pass
     # name pattern

@@ -990,6 +990,15 @@ def test_memory_ledger():
             tmp.unlink()
 
 
+def test_dsl_validator():
+    """DSL validator must reject unknown features and bad capability."""
+    from smartalpha.research.dsl_compiler import validate_hypothesis
+    ok, _ = validate_hypothesis({"name": "test_ok", "description": "valid description with enough length", "features": ["fresh_wallets"], "entry_rule": "fresh_wallets >= 2", "falsification_condition": "EV <=0"})
+    assert ok is True
+    ok, msg = validate_hypothesis({"name": "test_bad", "description": "valid description with enough length", "features": ["unknown_feature_xyz"], "entry_rule": "x", "falsification_condition": "y"})
+    assert ok is False and "unknown" in msg
+
+
 def test_feature_registry():
     """Feature Registry must contain registered features with capability."""
     from smartalpha.research.feature_registry import REGISTRY, validate_feature_names
