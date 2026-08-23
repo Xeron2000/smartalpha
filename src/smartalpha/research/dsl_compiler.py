@@ -19,6 +19,14 @@ def validate_hypothesis(data: dict) -> tuple[bool, str]:
     for field in schema.get("required", []):
         if field not in data:
             return False, f"missing required field: {field}"
+    # feature registry check
+    try:
+        from smartalpha.research.feature_registry import validate_feature_names
+        ok, msg = validate_feature_names(data.get("features", []))
+        if not ok:
+            return False, msg
+    except Exception:
+        pass
     # name pattern
     import re
     if not re.match(r"^[a-z0-9_]+$", data.get("name", "")):

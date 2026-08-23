@@ -990,6 +990,17 @@ def test_memory_ledger():
             tmp.unlink()
 
 
+def test_feature_registry():
+    """Feature Registry must contain registered features with capability."""
+    from smartalpha.research.feature_registry import REGISTRY, validate_feature_names
+    assert "fresh_wallet_count" in REGISTRY or "fresh_wallets" in REGISTRY
+    assert REGISTRY["fresh_wallets"].capability in ("FULL", "PARTIAL", "PROSPECTIVE_ONLY", "NONE")
+    ok, _ = validate_feature_names(["fresh_wallets"])
+    assert ok is True
+    ok, msg = validate_feature_names(["unknown_feature_xyz"])
+    assert ok is False
+
+
 def test_dsl_compiler():
     """DSL compiler must validate 5 examples and reject bad DSL."""
     from smartalpha.research.dsl_compiler import compile_file, compile_hypothesis, list_examples
