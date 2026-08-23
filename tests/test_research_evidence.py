@@ -906,6 +906,16 @@ def test_60m_label_never_uses_close_before_close_is_available():
     assert "(label_c.close" not in wf_text or "label_c.open" in wf_text
 
 
+def test_60m_label_availability_uses_actual_candle_time():
+    """Actual candle availability gate: label_c.time must be < test_window_start, not nominal."""
+    import pathlib
+    wf_text = pathlib.Path("src/smartalpha/walk_forward.py").read_text()
+    assert "label_available_at = label_c.time" in wf_text
+    assert "label_available_at = launch_ts + 3600" not in wf_text
+    assert "label_c = next" in wf_text and "label_available_at = label_c.time" in wf_text
+    assert wf_text.index("label_c = next") < wf_text.index("label_available_at = label_c.time") < wf_text.index("if label_available_at >= test_window_start")
+
+
 def test_execution_never_uses_pre_entry_candle():
     """Execution must never use candle before entry_ts."""
     from smartalpha.research.execution import parse_kline_candles, simulate_fixed

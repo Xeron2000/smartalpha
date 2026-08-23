@@ -140,20 +140,16 @@ def run_walk_forward(
             settings=s,
         )
         # Research: train label must be anchored historical Kline, not discovery gain
-        # label_available_at = launch_ts + 3600 (60m horizon) must be < test_window_start
+        # label_available_at is actual candle time and must be < test_window_start
         train_gains: dict[str, float] = {}
         test_window_start = test_win[0] if test_win[0] else int(time.time())
         for m in train_mints:
             launch_ts = mint_times.get(m)
             if not launch_ts:
                 continue
-            label_available_at = launch_ts + 3600  # 60m horizon
-            if label_available_at >= test_window_start:
-                continue  # label not yet available before test — HISTORICAL_INCOMPLETE
-            # anchored Kline 60m label — must fetch launch -> +60m window, no discovery fallback
+            # anchored Kline 60m label — precise availability is actual candle time
             try:
                 from smartalpha.providers.gmgn import get_kline
-                # independent fetch covering 60m horizon
                 env = get_kline(m, interval="30s", settings=s, from_ts=launch_ts - 60, to_ts=launch_ts + 3660)
                 if not env or not env.get("data"):
                     env = get_kline(m, interval="1m", settings=s, from_ts=launch_ts - 60, to_ts=launch_ts + 3660)
@@ -161,22 +157,18 @@ def run_walk_forward(
                 if env and env.get("data"):
                     raw = env["data"].get("kline") or env["data"].get("list") or []
                 if raw:
-                    from smartalpha.providers.gmgn import kline_gains_anchored
-                    gains_k = kline_gains_anchored(raw, launch_ts, interval="30s")
-                    # kline_gains_anchored returns gain_300 etc; for 60m we compute from raw directly
-                    # fallback: compute 60m gain manually from Kline closes
                     from smartalpha.research.execution import parse_kline_candles
                     candles = parse_kline_candles(raw)
-                    # entry is first tradable open after launch — use open to avoid 30s leakage (candle time is open)
                     entry_c = next((c for c in candles if c.time >= launch_ts), None)
                     label_c = next((c for c in candles if c.time >= launch_ts + 3600), None)
-                    if entry_c and label_c and entry_c.open:
-                        gain_60m = (label_c.open - entry_c.open) / entry_c.open * 100
-                        train_gains[m] = float(gain_60m)
+                    if not entry_c or not label_c or not entry_c.open:
                         continue
-                    if gains_k and gains_k.get("gain_60m_pct") is not None:
-                        train_gains[m] = float(gains_k["gain_60m_pct"])
+                    label_available_at = label_c.time
+                    if label_available_at >= test_window_start:
                         continue
+                    gain_60m = (label_c.open - entry_c.open) / entry_c.open * 100
+                    train_gains[m] = float(gain_60m)
+                    continue
                 # Kline missing -> no train label (do not fallback to discovery gain)
             except Exception:
                 continue
