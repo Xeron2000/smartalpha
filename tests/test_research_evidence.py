@@ -916,6 +916,21 @@ def test_60m_label_availability_uses_actual_candle_time():
     assert wf_text.index("label_c = next") < wf_text.index("label_available_at = label_c.time") < wf_text.index("if label_available_at >= test_window_start")
 
 
+def test_generator_produces_novel_hypotheses():
+    """Generator must produce novel DSL hypotheses not in ledger."""
+    from smartalpha.research.generator import generate_novel_hypotheses
+    hypos = generate_novel_hypotheses(limit=2)
+    assert len(hypos) == 2
+    assert all("name" in h and "falsification_condition" in h for h in hypos)
+    # names should be unique
+    assert len({h["name"] for h in hypos}) == 2
+    # must be compilable
+    from smartalpha.research.dsl_compiler import compile_hypothesis
+    for h in hypos:
+        compiled = compile_hypothesis({k: h[k] for k in ["name","description","features","entry_rule","falsification_condition"] if k in h})
+        assert compiled["name"] == h["name"]
+
+
 def test_execution_never_uses_pre_entry_candle():
     """Execution must never use candle before entry_ts."""
     from smartalpha.research.execution import parse_kline_candles, simulate_fixed

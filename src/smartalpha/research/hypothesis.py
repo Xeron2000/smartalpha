@@ -100,6 +100,18 @@ def generate_hypotheses(memory: dict | None = None, limit: int = 3) -> list[dict
         out.append(h)
         if len(out) >= limit:
             break
+    # V3 generator enhancement: if still under limit, generate novel from ledger
+    if len(out) < limit:
+        try:
+            from smartalpha.research.generator import generate_novel_hypotheses
+            novel = generate_novel_hypotheses(limit=limit - len(out))
+            for n in novel:
+                if not any(o["name"] == n["name"] for o in out):
+                    out.append(n)
+                if len(out) >= limit:
+                    break
+        except Exception:
+            pass
     return out
 
 
