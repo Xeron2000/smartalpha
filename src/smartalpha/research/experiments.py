@@ -75,9 +75,7 @@ class FunderRepeatExperiment(BaseExperiment):
         return features.get("hot_organic", 0) >= thresh and bool(features.get("repeated_funder"))
 
     def run(self, hypo: dict, settings: Settings | None = None, dry_run: bool = False) -> ExperimentResult:
-        if dry_run and not _has_real_data():
-            return ExperimentResult(hypo["name"], 12, 0.42, 0.42, 8, 10, "fixture", int(time.time()), {"rule": hypo.get("entry_rule")})
-        return _run_walk_forward_with_filter(hypo, settings, experiment=self)
+        return _run_walk_forward_with_filter(hypo, settings, experiment=self, dry_run=dry_run)
 
 
 class HolderConcentrationExperiment(BaseExperiment):
@@ -117,9 +115,7 @@ class HolderConcentrationExperiment(BaseExperiment):
         return features.get("top10_holder_rate", 1) < top_thresh and features.get("hot_organic", 0) >= hot_thresh
 
     def run(self, hypo: dict, settings: Settings | None = None, dry_run: bool = False) -> ExperimentResult:
-        if dry_run and not _has_real_data():
-            return ExperimentResult(hypo["name"], 8, 0.31, 0.38, 6, 10, "fixture", int(time.time()), {"rule": hypo.get("entry_rule")})
-        return _run_walk_forward_with_filter(hypo, settings, experiment=self)
+        return _run_walk_forward_with_filter(hypo, settings, experiment=self, dry_run=dry_run)
 
 
 class WalletAgeExperiment(BaseExperiment):
@@ -153,9 +149,7 @@ class WalletAgeExperiment(BaseExperiment):
         return features.get("fresh_wallets", 0) >= thresh and grade in ("strong", "medium")
 
     def run(self, hypo: dict, settings: Settings | None = None, dry_run: bool = False) -> ExperimentResult:
-        if dry_run and not _has_real_data():
-            return ExperimentResult(hypo["name"], 15, 0.28, 0.36, 7, 10, "fixture", int(time.time()), {"rule": hypo.get("entry_rule")})
-        return _run_walk_forward_with_filter(hypo, settings, experiment=self)
+        return _run_walk_forward_with_filter(hypo, settings, experiment=self, dry_run=dry_run)
 
 
 def _has_real_data() -> bool:
@@ -179,21 +173,37 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
 
     s = settings or Settings()
     path = ROOT / "data" / "auto_discover.json"
+    synthetic_mode = False
     if not path.exists():
         if dry_run:
-            # dry_run fixture: return distinct per-experiment fixture via direct experiment run
-            # This keeps robustness dry_run from failing when no real data
-            if experiment.name == "funder_repeat_hot_2_organic":
-                return ExperimentResult(hypo.get("name", experiment.name), 12, 0.42, 0.42, 8, 10, "fixture", int(time.time()), {"rule": hypo.get("entry_rule"), "dry_run": True})
-            elif experiment.name == "early_holder_concentration_low":
-                return ExperimentResult(hypo.get("name", experiment.name), 8, 0.31, 0.38, 6, 10, "fixture", int(time.time()), {"rule": hypo.get("entry_rule"), "dry_run": True})
-            else:
-                return ExperimentResult(hypo.get("name", experiment.name), 15, 0.28, 0.36, 7, 10, "fixture", int(time.time()), {"rule": hypo.get("entry_rule"), "dry_run": True})
-        raise ExperimentError(f"missing {path} — live cycle requires real discovery data")
-    mints = load_mints_with_pairs(path)
-    if not mints:
-        raise ExperimentError("no mints in discovery file")
-    wf = run_walk_forward(mints, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5)
+            synthetic_mode = True
+            # deterministic synthetic mints for dry_run — 30 mints gives test 9 for better distribution
+            mints = [(f"DryMint{i}1111111111111111111111111111111111pump", None) for i in range(30)]
+        else:
+            raise ExperimentError(f"missing {path} — live cycle requires real discovery data")
+    else:
+        mints = load_mints_with_pairs(path)
+        if not mints:
+            raise ExperimentError("no mints in discovery file")
+    # For synthetic dry_run, we still need walk_forward split but with synthetic times
+    if synthetic_mode:
+        # Synthetic walk_forward: use deterministic synthetic times and funders
+        # Synthetic train/test split via train_ratio
+        n = len(mints)
+        cut = max(1, min(n - 1, int(n * train_ratio)))
+        train_mints = [m for m, _ in mints[:cut]]
+        test_mints = [m for m, _ in mints[cut:]]
+        wf_train_funders = [{"address": f"SynFunder{i}"} for i in range(3)]
+        # create a dummy wf object with needed attrs
+        class _WF:
+            pass
+        wf = _WF()
+        wf.train_funders = wf_train_funders
+        wf.test_mints = test_mints
+        wf.test_compare = None
+        wf.train_mints = train_mints
+    else:
+        wf = run_walk_forward(mints, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5)
     test_mints = wf.test_mints or []
     # Real per-mint filtering and per-mint Kline execution
     selected: list[dict] = []
@@ -205,13 +215,30 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
             feats = experiment.select_features(mint, hypo, settings=s)
             if not experiment.should_enter(feats, hypo):
                 continue
-            # record selected mint with features
-            selected.append({"mint": mint, "features": feats, "feature_observed_at": feats.get("observed_at")})
-            # Kline anchored execution: signal_ts = pairCreatedAt or now
-            signal_ts = dex_pair_created_at(mint) or int(time.time()) - 900
+            selected.append({"mint": mint, "features": feats, "feature_observed_at": feats.get("observed_at"), "signal_ts": dex_pair_created_at(mint) or int(time.time()) - 900})
+            signal_ts = selected[-1]["signal_ts"]
             raw = kline_candles(mint, signal_ts=signal_ts)
+            # For synthetic dry_run, generate deterministic synthetic 30s candles
+            if not raw and synthetic_mode:
+                import hashlib
+
+                h = int(hashlib.sha256((mint + str(signal_ts)).encode()).hexdigest(), 16)
+                # deterministic synthetic: 30s candles for 900s = 30 candles
+                base_price = 1.0
+                raw = []
+                price = base_price
+                for i in range(30):
+                    # deterministic walk: up/down based on hash bits
+                    bit = (h >> (i % 8)) & 1
+                    change = 0.02 if bit else -0.015
+                    # experiment-specific drift to make PnL distinct per cohort
+                    if experiment.name == "funder_repeat_hot_2_organic":
+                        change += 0.015  # more bullish
+                    elif experiment.name == "early_holder_concentration_low":
+                        change -= 0.005
+                    price = max(0.1, price * (1 + change))
+                    raw.append({"time": (signal_ts + i * 30) * 1000, "open": str(price), "high": str(price * 1.01), "low": str(price * 0.99), "close": str(price), "volume": "100"})
             if not raw:
-                # no Kline, fallback to walk_forward best net per trade (conservative)
                 continue
             candles = parse_kline_candles(raw)
             if not candles:
@@ -219,12 +246,11 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
             entry = candles[0].close if candles else 0
             if not entry:
                 continue
-            # map experiment to execution mode
             if experiment.name == "funder_repeat_hot_2_organic":
                 pnl, _ = simulate_scale_half(candles, entry, 0.5, s.backtest_slippage)
             elif experiment.name == "early_holder_concentration_low":
                 pnl, _ = simulate_fixed(candles, entry, 0.5, s.backtest_slippage, tp_pct=100, sl_pct=30)
-            else:  # wallet age -> dynamic trail
+            else:
                 pnl, _ = simulate_dynamic_trail(candles, entry, 0.5, s.backtest_slippage)
             if pnl is None:
                 continue

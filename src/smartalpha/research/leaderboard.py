@@ -12,18 +12,20 @@ def build_leaderboard(results: dict[str, dict]) -> list[dict]:
     for name, res in results.items():
         hist = res.get("historical") or res.get("oos") or {}
         rob = res.get("robustness") or {}
+        ev = float(hist.get("best_net_tpsl_sol", 0) or 0) / max(1, int(hist.get("oos_signals", 0)))
         rows.append(
             {
                 "hypothesis": name,
                 "oos_signals": int(hist.get("oos_signals", 0)),
                 "oos_net": float(hist.get("best_net_tpsl_sol", 0) or 0),
+                "ev": round(ev, 4),
                 "win_rate": float(hist.get("best_win_rate", 0) or 0),
                 "robust_passed": bool((rob.get("robustness") or rob).get("stable", rob.get("passed", False))),
                 "source": "leaderboard",
                 "observed_at": int(time.time()),
             }
         )
-    rows.sort(key=lambda r: r["oos_net"], reverse=True)
+    rows.sort(key=lambda r: r["ev"], reverse=True)
     return rows
 
 
