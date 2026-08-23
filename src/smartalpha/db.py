@@ -133,6 +133,12 @@ class Store:
             ).fetchone()
         return row is not None
 
+    def list_seen_mints(self, limit: int = 1000) -> list[tuple[str, int]]:
+        """Outcome-blind research universe: Helius launch ledger ordered by ts."""
+        with self._conn() as c:
+            rows = c.execute("SELECT mint, ts FROM seen_mints ORDER BY ts ASC LIMIT ?", (limit,)).fetchall()
+            return [(r["mint"], int(r["ts"])) for r in rows]
+
     def mark_mint_seen(self, mint: str, signature: str, creator: str) -> None:
         # ponytail: backward-compat shim, new code uses try_seen_mint
         with self._conn() as c:

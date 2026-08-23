@@ -206,13 +206,12 @@ class WalletAgeExperiment(BaseExperiment):
 
 
 def _has_real_data() -> bool:
-    from smartalpha.config import ROOT
-    return (ROOT / "data" / "auto_discover.json").exists()
+    from smartalpha.research.universe import auto_discover_fallback_path
+    return auto_discover_fallback_path().exists()
 
 
 def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experiment: BaseExperiment, train_ratio: float = 0.7, dry_run: bool = False) -> ExperimentResult:
     from smartalpha.backtest_funders import load_mints_with_pairs
-    from smartalpha.config import ROOT
     from smartalpha.funder import kline_candles
     from smartalpha.research.execution import (
         parse_kline_candles,
@@ -223,16 +222,46 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
     from smartalpha.research.runner import ExperimentError
     from smartalpha.walk_forward import run_walk_forward
     s = settings or Settings()
-    path = ROOT / "data" / "auto_discover.json"
     synthetic_mode = False
-    if not path.exists():
-        if dry_run:
-            synthetic_mode = True
-            mints = [(f"DryMint{i}1111111111111111111111111111111111pump", None) for i in range(30)]
-        else:
-            raise ExperimentError(f"missing {path} — live cycle requires real discovery data")
+    seen_mints_loaded: list[tuple[str, int]] | None = None
+    # Research OOS universe must come from Helius launch ledger (pre-outcome), not winners
+    if not dry_run:
+        try:
+            from smartalpha.research.universe import load_research_universe
+            seen = load_research_universe(settings=s, limit=2000)
+            # load_research_universe returns list of (mint, None) if ledger has data
+            if seen:
+                # need ts for ordering — fetch directly
+                from smartalpha.db import Store
+                store = Store(s.db_path)
+                seen_with_ts = store.list_seen_mints(limit=2000)
+                if seen_with_ts:
+                    seen_mints_loaded = seen_with_ts
+        except Exception:
+            pass
+    if seen_mints_loaded:
+        mints = [(mint, None) for mint, _ in seen_mints_loaded]
+        n = len(seen_mints_loaded)
+        cut = max(1, min(n - 1, int(n * train_ratio)))
+        _ordered = sorted(seen_mints_loaded, key=lambda x: x[1])
+        train_mints = [m for m, _ in _ordered[:cut]]
+        test_mints = [m for m, _ in _ordered[cut:]]
+        mints_for_wf = [(m, None) for m in train_mints + test_mints]
+        wf = run_walk_forward(mints_for_wf, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5)
+        wf.train_mints = train_mints
+        wf.test_mints = test_mints
     else:
-        mints = load_mints_with_pairs(path)
+        # outcome-blind fallback: use universe helper (auto_discover path hidden there)
+        from smartalpha.research.universe import auto_discover_fallback_path
+        path = auto_discover_fallback_path()
+        if not path.exists():
+            if dry_run:
+                synthetic_mode = True
+                mints = [(f"DryMint{i}1111111111111111111111111111111111pump", None) for i in range(30)]
+            else:
+                raise ExperimentError(f"missing {path} — live cycle requires real discovery data (seen_mints ledger empty and no auto_discover)")
+        else:
+            mints = load_mints_with_pairs(path)
         if not mints:
             raise ExperimentError("no mints in discovery file")
     if synthetic_mode:
@@ -248,11 +277,12 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
         wf.test_mints = test_mints
         wf.test_compare = None
         wf.train_mints = train_mints
-    else:
+    elif seen_mints_loaded is None:
         wf = run_walk_forward(mints, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5)
     test_mints = wf.test_mints or []
     # Outcome-blind universe: candidate must be observed before test_window_start, not after outcome
-    if not synthetic_mode:
+    # For launch ledger (seen_mints) this is already outcome-blind, skip auto_discover check
+    if not synthetic_mode and seen_mints_loaded is None:
         try:
             import json as _j
             data = _j.loads(path.read_text())

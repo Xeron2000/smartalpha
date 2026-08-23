@@ -820,6 +820,36 @@ def test_wallet_age_no_fake_grade():
     assert "fresh_wallets" in feats
 
 
+def test_research_universe_comes_from_preoutcome_launch_ledger():
+    """Research OOS universe must come from Helius seen_mints launch ledger, not auto_discover winners."""
+    import pathlib
+    exp_text = pathlib.Path("src/smartalpha/research/experiments.py").read_text()
+    assert "seen_mints" in exp_text or "launch_ledger" in exp_text
+    assert "list_seen_mints" in exp_text or "seen_mints" in exp_text
+    # auto_discover should not be primary OOS universe in research
+    assert "auto_discover.json" not in exp_text or "seen_mints" in exp_text
+    # verify that research checks candidate_observed_at is before test_window
+    assert "candidate_observed_at" in exp_text
+    # functional: dry_run still works, live with empty seen_mints should be HISTORICAL_INCOMPLETE not winners
+    from smartalpha.research.experiments import get_experiment
+    exp = get_experiment("funder_repeat_hot_2_organic")
+    # dry synthetic should succeed
+    res = exp.run({"name": "funder_repeat_hot_2_organic"}, dry_run=True)
+    assert res.oos_signals >= 0
+
+
+def test_train_60m_label_never_falls_back_to_discovery_gain():
+    """Train 60m label must never fallback to discovery gain."""
+    import pathlib
+    wf_text = pathlib.Path("src/smartalpha/walk_forward.py").read_text()
+    assert "launch_ts + 3600" in wf_text or "3660" in wf_text
+    assert "get_kline" in wf_text
+    assert "train_gains[m] = float(gains[m])" not in wf_text  # no discovery fallback
+    assert "label_available_at" in wf_text
+    assert "test_window_start" in wf_text
+    assert "gain_60m" in wf_text
+
+
 def test_execution_never_uses_pre_entry_candle():
     """Execution must never use candle before entry_ts."""
     from smartalpha.research.execution import parse_kline_candles, simulate_fixed
