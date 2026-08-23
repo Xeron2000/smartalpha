@@ -69,6 +69,18 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
     bench = run_benchmark(settings=s, dry_run=dry_run)
     bench_path = write_benchmark(bench)
     verdicts = {}
+    # V3: family and multiple-testing tracking
+    try:
+        from smartalpha.research.family import family_id
+        from smartalpha.research.memory import read_ledger
+        from smartalpha.research.multiple_testing import family_gate
+        ledger = read_ledger()
+        family_counts: dict[str, int] = {}
+        for r in ledger:
+            fid = r.get("family_id") or "unknown"
+            family_counts[fid] = family_counts.get(fid, 0) + 1
+    except Exception:
+        family_counts = {}
     for h in hypos:
         name = h["name"]
         rt = redteams[name]
@@ -77,6 +89,15 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
         details = oos.get("details") or {}
         priced = int(details.get("priced", oos.get("oos_signals", 0)))
         coverage = float(details.get("coverage", 1.0))
+        # family gate
+        try:
+            fid = family_id(h)
+            h["family_id"] = fid
+            if not family_gate(family_counts.get(fid, 0)):
+                verdicts[name] = "FALSIFIED"
+                continue
+        except Exception:
+            pass
         if not rv["passed"]:
             verdicts[name] = "FALSIFIED"
         elif rt["verdict"] == "KILLED":
@@ -87,6 +108,13 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
             verdicts[name] = "PROMISING"
         else:
             verdicts[name] = "INSUFFICIENT_DATA"
+        # paper candidate freeze
+        if verdicts[name] == "PROMISING":
+            try:
+                from smartalpha.research.paper import freeze_paper_candidate
+                freeze_paper_candidate(h, results[name])
+            except Exception:
+                pass
     mem["last_run"] = {
         "at": now,
         "dry_run": dry_run,
