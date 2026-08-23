@@ -55,15 +55,21 @@ class FunderRepeatExperiment(BaseExperiment):
                 s = settings or _S()
                 if s.helius_key and mint.endswith("pump") and not mint.startswith(("fixture", "DryMint", "Mint")):
                     rpc = SolanaRpc(rpc_url(s))
-                    intel = analyze_launch(mint, rpc, settings=s, hot_funders={})
+                    # Use frozen train funders, not empty
+                    train_funders = hypo.get("_train_funders") or set()
+                    hot_funders = {addr: True for addr in train_funders} if train_funders else {}
+                    # Historical: only buyers with blockTime <= available_at
+                    # For live, available_at is launch+90, but we don't yet know launch_ts, so get it via dex_pair_created_at
+                    from smartalpha.funder import dex_pair_created_at
+                    launch_ts = dex_pair_created_at(mint) or 1_700_000_000
+                    available_at = launch_ts + 90
+                    observed_at = available_at + 5
+                    intel = analyze_launch(mint, rpc, settings=s, hot_funders=hot_funders, as_of_ts=available_at, launch_ts=launch_ts)
                     hot_organic = len(hot_organic_buyers(intel))
                     repeated = bool(intel.hot_funder_hits)
                     if not intel.buyers:
-                        raise MissingFeatureError(f"no buyers for live mint {mint}")
-                    launch_ts = getattr(intel, "launch_ts", None) or 1_700_000_000
-                    available_at = launch_ts + 90
-                    observed_at = available_at + 5
-                    return {"hot_organic": hot_organic, "repeated_funder": repeated, "mint": mint, "observed_at": observed_at, "available_at": available_at, "source": "funder"}
+                        raise MissingFeatureError(f"no buyers for live mint {mint} at as_of {available_at}")
+                    return {"hot_organic": hot_organic, "repeated_funder": repeated, "mint": mint, "observed_at": observed_at, "available_at": available_at, "source": "funder", "launch_ts": launch_ts}
                 raise MissingFeatureError(f"missing helius or not pump {mint}")
             except MissingFeatureError:
                 raise
@@ -101,19 +107,12 @@ class HolderConcentrationExperiment(BaseExperiment):
             dry = True
         if not dry:
             try:
-                from smartalpha.providers.gmgn import get_holders_traders
                 s = settings or Settings()
                 if s.gmgn_api_key and mint.endswith("pump") and not mint.startswith(("fixture", "DryMint", "Mint")):
-                    env = get_holders_traders(mint, settings=s)
-                    if env and isinstance(env.get("data"), dict):
-                        data = env["data"]
-                        top10 = float(data.get("top10_holder_rate") or data.get("top_10_holder_rate") or 0.5)
-                        hot_organic = int(data.get("smart_degen_count") or 0) % 3
-                        launch_ts = int(data.get("creation_timestamp") or 1_700_000_000)
-                        available_at = launch_ts + 30
-                        observed_at = available_at + 5
-                        return {"top10_holder_rate": top10, "hot_organic": hot_organic, "mint": mint, "observed_at": observed_at, "available_at": available_at, "source": "holder"}
-                    raise MissingFeatureError(f"GMGN holders missing for {mint}")
+                    # Holder is PROSPECTIVE_ONLY: historical without snapshot is HISTORICAL_UNAVAILABLE
+                    # For live, we would need a frozen snapshot at available_at; current GMGN is todays state
+                    raise MissingFeatureError(f"HISTORICAL_UNAVAILABLE: holder snapshot for {mint} at +30s not prospectively captured")
+
                 raise MissingFeatureError(f"missing gmgn or not pump {mint}")
             except MissingFeatureError:
                 raise
@@ -156,23 +155,23 @@ class WalletAgeExperiment(BaseExperiment):
             try:
                 from smartalpha.config import Settings as _S
                 from smartalpha.config import rpc_url
-                from smartalpha.funder import wallet_age_hours
                 from smartalpha.launch_intel import analyze_launch
                 from smartalpha.rpc import SolanaRpc
                 s = settings or _S()
                 if s.helius_key and mint.endswith("pump") and not mint.startswith(("fixture", "DryMint", "Mint")):
                     rpc = SolanaRpc(rpc_url(s))
-                    intel = analyze_launch(mint, rpc, settings=s, hot_funders={})
-                    fresh = 0
-                    for b in intel.buyers[:5]:
-                        age = wallet_age_hours(rpc, b.wallet)
-                        if age is not None and age < 2:
-                            fresh += 1
-                    launch_ts = getattr(intel, "launch_ts", None) or 1_700_000_000
+                    from smartalpha.funder import dex_pair_created_at, wallet_age_hours_at
+                    launch_ts = dex_pair_created_at(mint) or 1_700_000_000
                     available_at = launch_ts + 30
                     observed_at = available_at + 5
+                    intel = analyze_launch(mint, rpc, settings=s, hot_funders={}, as_of_ts=available_at, launch_ts=launch_ts)
+                    fresh = 0
+                    for b in intel.buyers[:5]:
+                        age = wallet_age_hours_at(rpc, b.wallet, available_at)
+                        if age is not None and age < 2:
+                            fresh += 1
                     funder_grade = "medium"
-                    return {"fresh_wallets": fresh, "funder_grade": funder_grade, "mint": mint, "observed_at": observed_at, "available_at": available_at, "source": "wallet_age"}
+                    return {"fresh_wallets": fresh, "funder_grade": funder_grade, "mint": mint, "observed_at": observed_at, "available_at": available_at, "source": "wallet_age", "launch_ts": launch_ts}
                 raise MissingFeatureError(f"missing helius or not pump {mint}")
             except MissingFeatureError:
                 raise
@@ -247,19 +246,25 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
     else:
         wf = run_walk_forward(mints, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5)
     test_mints = wf.test_mints or []
+    # Freeze train funder set for FunderRepeat (train window only)
+    train_funder_set = {f.get("address") or f.get("funder") or str(f) for f in (wf.train_funders or [])}
+    # Also handle synthetic wf_train_funders
+    hypo_with_train = dict(hypo)
+    hypo_with_train["_train_funders"] = train_funder_set
     selected: list[dict] = []
     total_pnl = 0.0
     wins = 0
     losses = 0
     for mint in test_mints:
         try:
-            feats = experiment.select_features(mint, hypo, settings=s)
-            if not experiment.should_enter(feats, hypo):
+            feats = experiment.select_features(mint, hypo_with_train, settings=s)
+            if not experiment.should_enter(feats, hypo_with_train):
                 continue
             available_at = int(feats.get("available_at") or 0)
-            entry_ts = available_at + 5
+            observed_at = int(feats.get("observed_at") or 0)
+            entry_ts = max(available_at, observed_at) + 5  # decision 0.5s + copy 5s
             signal_ts = entry_ts
-            selected.append({"mint": mint, "features": feats, "feature_observed_at": feats.get("observed_at"), "available_at": available_at, "signal_ts": signal_ts, "entry_ts": entry_ts})
+            selected.append({"mint": mint, "features": feats, "feature_observed_at": observed_at, "available_at": available_at, "signal_ts": signal_ts, "entry_ts": entry_ts})
             raw = kline_candles(mint, signal_ts=signal_ts)
             if not raw and synthetic_mode:
                 import hashlib
@@ -279,10 +284,11 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
             if not raw:
                 selected[-1]["status"] = "UNPRICED"
                 continue
-            candles = parse_kline_candles(raw)
+            candles = [c for c in parse_kline_candles(raw) if c.time >= entry_ts]
             if not candles:
                 selected[-1]["status"] = "UNPRICED"
                 continue
+            # Prefer first tradeable candle at or after entry_ts, not raw[0]
             entry = candles[0].close if candles else 0
             if not entry:
                 selected[-1]["status"] = "UNPRICED"

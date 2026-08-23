@@ -45,9 +45,12 @@ def analyze_launch(
     max_sigs: int = 40,
     settings: Settings | None = None,
     hot_funders: dict[str, HotFunder] | None = None,
+    as_of_ts: int | None = None,
+    launch_ts: int | None = None,
 ) -> LaunchIntel:
-    """Behavior-first: score early buyers by age/funder/bundle, not static watchlist."""
-    from smartalpha.funder import dex_pair_address, resolve_first_funder
+    """Behavior-first: score early buyers by age/funder/bundle, not static watchlist.
+    When as_of_ts is set, only transactions with launch_ts <= ts <= as_of_ts are considered (historical)."""
+    from smartalpha.funder import dex_pair_address, resolve_first_funder, wallet_age_hours, wallet_age_hours_at
 
     settings_obj = settings or Settings()
     hot = hot_funders if hot_funders is not None else {}
@@ -67,6 +70,12 @@ def analyze_launch(
                 continue
             slot = tx.get("slot")
             ts = int(tx.get("blockTime") or 0)
+            if as_of_ts is not None and launch_ts is not None:
+                if ts < launch_ts or ts > as_of_ts:
+                    continue
+            elif as_of_ts is not None:
+                if ts > as_of_ts:
+                    continue
             for ev in _extract_mint_buys(tx, mint):
                 raw_buys.append(
                     BuyerProfile(
@@ -85,10 +94,13 @@ def analyze_launch(
             first[b.wallet] = b
     buyers = list(first.values())
 
-    # enrich + score
+    # enrich + score (historical wallet age when as_of_ts set)
     funder_map: dict[str, str | None] = {}
     for b in buyers:
-        b.wallet_age_hours = wallet_age_hours(rpc, b.wallet)
+        if as_of_ts is not None:
+            b.wallet_age_hours = wallet_age_hours_at(rpc, b.wallet, as_of_ts)
+        else:
+            b.wallet_age_hours = wallet_age_hours(rpc, b.wallet)
         if hot_funders is not None:
             funder, _src = resolve_first_funder(rpc, b.wallet, settings_obj)
             b.funder = funder

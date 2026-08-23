@@ -40,6 +40,28 @@ def wallet_age_hours(rpc: SolanaRpc, wallet: str, *, max_pages: int = 3) -> floa
     return max(0.0, (time.time() - oldest) / 3600)
 
 
+def wallet_age_hours_at(rpc: SolanaRpc, wallet: str, as_of_ts: int, *, max_pages: int = 5) -> float | None:
+    """Historical wallet age at `as_of_ts`: as_of_ts - first_tx_ts. No future leakage."""
+    oldest: int | None = None
+    before: str | None = None
+    for _ in range(max_pages):
+        batch = rpc.get_signatures(wallet, before=before, limit=100)
+        if not batch:
+            break
+        for s in batch:
+            bt = s.get("blockTime")
+            if bt is None or bt > as_of_ts:
+                continue
+            oldest = bt if oldest is None else min(oldest, bt)
+        # stop if oldest batch is already before as_of_ts and we have enough
+        before = batch[-1]["signature"]
+        if len(batch) < 100:
+            break
+    if oldest is None:
+        return None
+    return max(0.0, (as_of_ts - oldest) / 3600)
+
+
 def find_sol_funder(rpc: SolanaRpc, wallet: str, *, scan: int = 15) -> str | None:
     """Recent incoming SOL (fast, may miss first funder)."""
     sigs = rpc.get_signatures(wallet, limit=scan)
