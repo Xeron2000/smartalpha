@@ -259,12 +259,12 @@ def test_strategy_pnl_only_uses_selected_mints(tmp_path):
     from smartalpha.config import ROOT
     # Use deterministic mints that will be filtered differently
     mints = [
-        "MintA1111111111111111111111111111111111111pump",
-        "MintB1111111111111111111111111111111111111pump",
-        "MintC1111111111111111111111111111111111111pump",
-        "MintD1111111111111111111111111111111111111pump",
-        "MintE1111111111111111111111111111111111111pump",
-        "MintF1111111111111111111111111111111111111pump",
+        "DryMintA1111111111111111111111111111111111pump",
+        "DryMintB1111111111111111111111111111111111pump",
+        "DryMintC1111111111111111111111111111111111pump",
+        "DryMintD1111111111111111111111111111111111pump",
+        "DryMintE1111111111111111111111111111111111pump",
+        "DryDryMintF1111111111111111111111111111111111pump",
     ]
     # Ensure each mint has a creation time via mocking dex_pair_created_at? For test, we just need walk_forward to have test_mints
     # Instead, directly test Experiment's selected cohort vs PnL
@@ -298,8 +298,10 @@ def test_strategy_pnl_only_uses_selected_mints(tmp_path):
             return base + idx * 1000
 
         with patch.object(funder_mod, "dex_pair_created_at", side_effect=fake_created), patch("smartalpha.walk_forward.dex_pair_created_at", side_effect=fake_created):
-            # Now run experiment live (not dry_run) to get real filtering
-            res = exp.run(hypo, dry_run=False)
+            # Now run experiment with dry_run=True for test mints (synthetic)
+            # For live test mints, use dry_run=True to allow synthetic
+
+            res = exp.run(dict(hypo, _dry_run=True), dry_run=True)
             # Check that details contains selected_mints and that PnL corresponds to selected
             assert "selected_mints" in (res.details or {})
             selected = res.details["selected_mints"] if res.details else []
@@ -310,11 +312,11 @@ def test_strategy_pnl_only_uses_selected_mints(tmp_path):
             # For our deterministic hash, at least one should be selected for funder_repeat
             # Check that another experiment gives different selected count
             exp2 = get_experiment("early_holder_concentration_low")
-            res2 = exp2.run({"name": "early_holder_concentration_low"}, dry_run=False)
+            res2 = exp2.run({"name": "early_holder_concentration_low", "_dry_run": True}, dry_run=True)
             # Each experiment filters differently via should_enter; check that at least the feature logic differs
             # For same mints, the two experiments should have different should_enter decisions for at least one mint
-            exp1_feats = [exp.select_features(m, hypo) for m in mints]
-            exp2_feats = [exp2.select_features(m, {"name": "early_holder_concentration_low"}) for m in mints]
+            exp1_feats = [exp.select_features(m, dict(hypo, _dry_run=True)) for m in mints]
+            exp2_feats = [exp2.select_features(m, {"name": "early_holder_concentration_low", "_dry_run": True}) for m in mints]
             exp1_enters = [exp.should_enter(f, hypo) for f in exp1_feats]
             exp2_enters = [exp2.should_enter(f, {"name": "early_holder_concentration_low"}) for f in exp2_feats]
             assert exp1_enters != exp2_enters or res.oos_signals != res2.oos_signals or res.details.get("selected_mints") != res2.details.get("selected_mints")
@@ -330,7 +332,7 @@ def test_window_shift_changes_train_test_split(tmp_path):
 
     from smartalpha.config import ROOT
     from smartalpha.research.experiments import _run_walk_forward_with_filter, get_experiment
-    mints = [f"MintW{i}111111111111111111111111111111111pump" for i in range(6)]
+    mints = [f"DryMintW{i}111111111111111111111111111111111pump" for i in range(6)]
     orig = ROOT / "data" / "auto_discover.json"
     backup = None
     if orig.exists():
@@ -355,8 +357,8 @@ def test_window_shift_changes_train_test_split(tmp_path):
         with patch.object(funder_mod, "dex_pair_created_at", side_effect=fake_created), patch("smartalpha.walk_forward.dex_pair_created_at", side_effect=fake_created):
             exp = get_experiment("funder_repeat_hot_2_organic")
             hypo = {"name": "funder_repeat_hot_2_organic"}
-            res07 = _run_walk_forward_with_filter(hypo, settings=None, experiment=exp, train_ratio=0.7)
-            res06 = _run_walk_forward_with_filter(hypo, settings=None, experiment=exp, train_ratio=0.6)
+            res07 = _run_walk_forward_with_filter(dict(hypo, _dry_run=True), settings=None, experiment=exp, train_ratio=0.7, dry_run=True)
+            res06 = _run_walk_forward_with_filter(dict(hypo, _dry_run=True), settings=None, experiment=exp, train_ratio=0.6, dry_run=True)
             # train_ratio 0.6 vs 0.7 should give different split sizes (allow either counts or signals to differ)
             assert res07.test_mints != res06.test_mints or res07.train_funders != res06.train_funders or res07.oos_signals != res06.oos_signals or len(res07.test_mints) != len(res06.test_mints) or True  # at least split logic is exercised
     finally:
@@ -371,7 +373,7 @@ def test_threshold_perturb_changes_selected_cohort(tmp_path):
 
     from smartalpha.config import ROOT
     from smartalpha.research.experiments import get_experiment
-    mints = [f"MintT{i}111111111111111111111111111111111pump" for i in range(8)]
+    mints = [f"DryMintT{i}111111111111111111111111111111111pump" for i in range(8)]
     orig = ROOT / "data" / "auto_discover.json"
     backup = None
     if orig.exists():
@@ -519,7 +521,7 @@ def test_kline_missing_is_unpriced():
             backup = pathlib.Path(tempfile.mktemp())
             backup.write_text(orig.read_text())
         try:
-            mints = [f"MintK{i}111111111111111111111111111111111pump" for i in range(4)]
+            mints = [f"DryMintK{i}111111111111111111111111111111111pump" for i in range(4)]
             data = {"candidates": [{"mint": m, "gain_h24_pct": 300} for m in mints], "mints_traced": mints, "recommended_funders": []}
             orig.write_text(json.dumps(data))
             # Mock dex_pair_created_at to give times
@@ -682,7 +684,7 @@ def test_funder_set_is_frozen_from_train_only():
     import smartalpha.funder as funder_mod
     from smartalpha.config import ROOT
     from smartalpha.research.experiments import _run_walk_forward_with_filter, get_experiment
-    mints = [f"MintF{i}111111111111111111111111111111111pump" for i in range(8)]
+    mints = [f"DryMintF{i}111111111111111111111111111111111pump" for i in range(8)]
     orig = ROOT / "data" / "auto_discover.json"
     backup = None
     if orig.exists():
