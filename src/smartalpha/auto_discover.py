@@ -47,7 +47,7 @@ def run_auto_discover(
         notes.append(f"merged {len(extra)} from {extra_mints_file.name}")
 
     if not mints:
-        notes.append("no candidate mints - lower --min-gain or set GMGN_COOKIE / add mints.txt")
+        notes.append("no candidate mints - lower --min-gain or set GMGN_API_KEY / add mints.txt")
         from smartalpha.discover_funders import DiscoverReport
 
         empty = DiscoverReport(0, [], [], ["no mints"])

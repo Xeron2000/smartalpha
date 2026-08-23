@@ -218,6 +218,11 @@ class Store:
         snapshots: dict[str, dict],
         notes: str = "",
     ) -> None:
+        # enforce Research provenance: every snapshot carries source + observed_at
+        for _k, snap in (snapshots or {}).items():
+            if isinstance(snap, dict):
+                snap.setdefault("source", snap.get("source") or "unknown")
+                snap.setdefault("observed_at", snap.get("observed_at") or int(time.time()))
         with self._conn() as c:
             c.execute(
                 """

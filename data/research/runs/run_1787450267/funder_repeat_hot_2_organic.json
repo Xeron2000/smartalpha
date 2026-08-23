@@ -1,0 +1,74 @@
+{
+  "hypothesis": "funder_repeat_hot_2_organic",
+  "historical": {
+    "hypothesis": "funder_repeat_hot_2_organic",
+    "oos_signals": 12,
+    "best_net_tpsl_sol": 0.42,
+    "best_win_rate": 0.42,
+    "train_funders": 8,
+    "test_mints": 10,
+    "source": "fixture",
+    "observed_at": 1787450267,
+    "walk_forward": false,
+    "notes": [
+      "fixture historical for dry-run; real run uses walk_forward with Kline"
+    ]
+  },
+  "robustness": {
+    "hypothesis": "funder_repeat_hot_2_organic",
+    "base_net": 0.42,
+    "robustness": {
+      "slippage_10pct_net": 0.3864,
+      "slippage_20pct_net": 0.3276,
+      "window_shift_net": 0.357,
+      "param_perturb_net": 0.378,
+      "stable": true,
+      "source": "runner",
+      "observed_at": 1787450267
+    },
+    "passed": true,
+    "source": "runner",
+    "observed_at": 1787450267
+  },
+  "review": {
+    "hypothesis": "funder_repeat_hot_2_organic",
+    "passed": true,
+    "issues": [],
+    "source": "reviewer",
+    "observed_at": 1787450274,
+    "checked_at": 1787450274
+  },
+  "redteam": {
+    "hypothesis": "funder_repeat_hot_2_organic",
+    "verdict": "SURVIVED",
+    "kill_reason": "",
+    "attacks": [
+      {
+        "attack": "survivorship",
+        "detail": "discovery from pumped set; OOS must be walk-forward",
+        "severity": "info"
+      },
+      {
+        "attack": "stale_liq",
+        "detail": "checked BACKTEST_IGNORE_STALE_LIQ handling",
+        "severity": "info"
+      },
+      {
+        "attack": "label_drift",
+        "detail": "GMGN smart money labels are snapshot at observed_at, not permanent",
+        "severity": "info"
+      },
+      {
+        "attack": "regime",
+        "detail": "pump.fun regime may shift; need paper confirmation",
+        "severity": "info"
+      }
+    ],
+    "source": "redteam",
+    "observed_at": 1787450274,
+    "checked_at": 1787450274
+  },
+  "generated_at": 1787450267,
+  "source": "cycle",
+  "observed_at": 1787450267
+}

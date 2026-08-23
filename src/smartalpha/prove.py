@@ -159,8 +159,7 @@ def _eval_phase1(
         f"{len(filtered_funders)}/{len(wf.train_funders)} train funders kept"
     )
     notes.append(
-        "caveat: DexScreener h1/h6/h24 proxy ≠ 90s delayed fill; "
-        "historical phase can only PROMISE, not PROVE live alpha"
+        "price: GMGN Kline 30s/1m primary → Dex fallback; latency tax via true 90/180/300/900"
     )
 
     gates: list[GateResult] = []
@@ -654,7 +653,7 @@ def write_prove_report(report: ProveReport, path: Path | None = None) -> Path:
             "min_train_funders": MIN_TRAIN_FUNDERS,
             "min_win_rate": MIN_WIN_RATE,
             "slippage_assumed": "settings.backtest_slippage (default 15%)",
-            "price_proxy": "DexScreener h1/h6/h24 for OOS; paper uses price_usd ratios",
+            "price_proxy": "GMGN Kline 30s/1m for OOS+paper; DexScreener fallback + cross-validation",
         },
     }
     p.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")

@@ -175,7 +175,7 @@ def dex_pair_address(mint: str) -> str | None:
 
 
 def dex_pair_meta(mint: str) -> dict | None:
-    """Top-volume SOL pair metadata from DexScreener."""
+    """Top-volume SOL pair metadata from DexScreener (fallback + liquidity)."""
     url = f"https://api.dexscreener.com/latest/dex/tokens/{mint}"
     with httpx.Client(timeout=15.0) as client:
         r = client.get(url)
@@ -195,6 +195,8 @@ def dex_pair_meta(mint: str) -> dict | None:
         "price_usd": float(top["priceUsd"]) if top.get("priceUsd") is not None else None,
         "liquidity_usd": float(liq) if liq is not None else None,
         "pair_created_at_ms": int(created) if created else None,
+        "source": "dexscreener",
+        "observed_at": int(time.time()),
     }
     for k in ("m5", "h1", "h6", "h24"):
         v = pc.get(k)
@@ -203,7 +205,48 @@ def dex_pair_meta(mint: str) -> dict | None:
     return out
 
 
+def _kline_snapshot(mint: str) -> dict | None:
+    """Try GMGN Kline for price snapshot; returns dict with price_usd/source/observed_at or None."""
+    try:
+        from smartalpha.providers.gmgn import get_kline_gains
+
+        gains = get_kline_gains(mint)
+        if gains and gains.get("entry_price"):
+            # use entry as t0 proxy; if we have 0-delay price, use entry
+            # For live snapshot, use latest close if available
+            price = gains.get("price_90") or gains.get("entry_price")
+            if price:
+                return {
+                    "price_usd": float(price),
+                    "liquidity_usd": None,  # kline has no liq, merge later
+                    "gain_90_pct": gains.get("gain_90_pct"),
+                    "gain_180_pct": gains.get("gain_180_pct"),
+                    "gain_300_pct": gains.get("gain_300_pct"),
+                    "gain_900_pct": gains.get("gain_900_pct"),
+                    "gain_h1_pct": gains.get("gain_h1_pct"),
+                    "gain_h6_pct": gains.get("gain_h6_pct"),
+                    "gain_h24_pct": gains.get("gain_h24_pct"),
+                    "mfe_pct": gains.get("mfe_pct"),
+                    "mae_pct": gains.get("mae_pct"),
+                    "source": "gmgn",
+                    "observed_at": int(gains.get("observed_at", time.time())),
+                    "kline_interval": gains.get("interval"),
+                    "ts": int(time.time()),
+                }
+    except Exception:
+        pass
+    return None
+
+
 def dex_price_snapshot(mint: str) -> dict | None:
+    # Primary: GMGN Kline (30s/1m) for true latency; fallback: DexScreener
+    snap = _kline_snapshot(mint)
+    if snap and snap.get("price_usd") is not None:
+        # enrich liquidity from Dex fallback if missing
+        meta = dex_pair_meta(mint)
+        if meta and snap.get("liquidity_usd") is None:
+            snap["liquidity_usd"] = meta.get("liquidity_usd")
+        return snap
     meta = dex_pair_meta(mint)
     if not meta:
         return None
@@ -214,6 +257,8 @@ def dex_price_snapshot(mint: str) -> dict | None:
         "gain_h1_pct": meta.get("gain_h1_pct"),
         "gain_h6_pct": meta.get("gain_h6_pct"),
         "gain_h24_pct": meta.get("gain_h24_pct"),
+        "source": meta.get("source", "dexscreener"),
+        "observed_at": meta.get("observed_at", int(time.time())),
         "ts": int(time.time()),
     }
 
@@ -227,11 +272,53 @@ def dex_pair_created_at(mint: str) -> int | None:
 
 
 def dex_token_outcome(mint: str) -> dict[str, float] | None:
-    """DexScreener priceChange + liquidity on top-volume SOL pair."""
+    """Primary: GMGN Kline 30s/1m (true latency) → fallback DexScreener."""
+    # ponytail: try Kline first for true Entry→90/180/300/900 + MFE/MAE
+    try:
+        from smartalpha.providers.gmgn import get_kline_gains
+
+        gains = get_kline_gains(mint)
+        if gains:
+            meta = dex_pair_meta(mint)  # still need liquidity/pair age
+            out: dict[str, float] = {}
+            # legacy h1/h6/h24 from Kline if available, else keep Dex fallback later
+            for k in ("h1", "h6", "h24"):
+                v = gains.get(f"gain_{k}_pct")
+                if v is not None:
+                    out[k] = float(v)
+            for k in ("90", "180", "300", "900"):
+                v = gains.get(f"gain_{k}_pct")
+                if v is not None:
+                    out[k] = float(v)
+                    out[f"gain_{k}_pct"] = float(v)
+            for k in ("mfe_pct", "mae_pct"):
+                if gains.get(k) is not None:
+                    out[k] = float(gains[k])
+            if meta:
+                if meta.get("liquidity_usd") is not None:
+                    out["liquidity_usd"] = float(meta["liquidity_usd"])
+                if meta.get("price_usd") is not None:
+                    out["price_usd"] = float(meta["price_usd"])
+                created_ms = meta.get("pair_created_at_ms")
+                if created_ms:
+                    out["pair_age_hours"] = max(0.0, (time.time() - created_ms / 1000) / 3600)
+            # fallback h1/h6/h24 from Dex if Kline didn't have enough candles
+            if meta and not out.get("h1") and meta.get("gain_h1_pct") is not None:
+                out["h1"] = float(meta["gain_h1_pct"])
+            if meta and not out.get("h24") and meta.get("gain_h24_pct") is not None:
+                out["h24"] = float(meta["gain_h24_pct"])
+            out["source"] = "gmgn"
+            out["observed_at"] = int(gains.get("observed_at", time.time()))
+            # alias for paper snapshot compatibility
+            if gains.get("entry_price"):
+                out["entry_price"] = float(gains["entry_price"])
+            return out or None
+    except Exception:
+        pass
     meta = dex_pair_meta(mint)
     if not meta:
         return None
-    out: dict[str, float] = {}
+    out = {}
     for k in ("h1", "h6", "h24"):
         v = meta.get(f"gain_{k}_pct")
         if v is not None:
@@ -243,4 +330,6 @@ def dex_token_outcome(mint: str) -> dict[str, float] | None:
     created_ms = meta.get("pair_created_at_ms")
     if created_ms:
         out["pair_age_hours"] = max(0.0, (time.time() - created_ms / 1000) / 3600)
+    out["source"] = meta.get("source", "dexscreener")
+    out["observed_at"] = int(meta.get("observed_at", time.time()))
     return out or None

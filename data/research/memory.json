@@ -1,0 +1,28 @@
+{
+  "hypotheses": [
+    "funder_repeat_hot_2_organic",
+    "early_holder_concentration_low",
+    "funder_wallet_age_fresh"
+  ],
+  "falsified": [],
+  "proven": [],
+  "updated_at": 1787450274,
+  "source": "memory",
+  "observed_at": 1787450274,
+  "last_run": {
+    "at": 1787450267,
+    "dry_run": true,
+    "hypotheses": [
+      "funder_repeat_hot_2_organic",
+      "early_holder_concentration_low",
+      "funder_wallet_age_fresh"
+    ],
+    "verdicts": {
+      "funder_repeat_hot_2_organic": "PROMISING",
+      "early_holder_concentration_low": "PROMISING",
+      "funder_wallet_age_fresh": "PROMISING"
+    },
+    "source": "cycle",
+    "observed_at": 1787450267
+  }
+}

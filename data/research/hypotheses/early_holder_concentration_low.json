@@ -1,0 +1,20 @@
+{
+  "name": "early_holder_concentration_low",
+  "thesis": "Low early holder concentration (<40% top10) at +30s predicts less dump and higher 900s EV",
+  "features": [
+    "holder_concentration@30s",
+    "smart_money_holders@30s",
+    "liquidity_usd@t0"
+  ],
+  "entry_rule": "top10_holder_share<0.4 and hot_organic>=1 and copytrap!=high",
+  "exit_rule": "fixed tp 100% sl 30%",
+  "expected_edge": "OOS 900s win_rate>40% net>0",
+  "falsification_condition": "OOS n>=10 and 900s EV<=0",
+  "known_biases": [
+    "holder snapshot timing",
+    "GMGN label drift"
+  ],
+  "generated_at": 1787450267,
+  "source": "hypothesis",
+  "observed_at": 1787450267
+}

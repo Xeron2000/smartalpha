@@ -1,0 +1,22 @@
+{
+  "generated_at": 1787450274,
+  "source": "fixture",
+  "observed_at": 1787450274,
+  "helius_total": 100,
+  "gmgn_total": 97,
+  "true_positives": 92,
+  "false_positives": 5,
+  "false_negatives": 8,
+  "recall": 0.92,
+  "missing_rate": 0.08,
+  "duplicate_rate": 0.02,
+  "latency_ms": {
+    "p50_ms": 8200,
+    "p95_ms": 14500,
+    "mean_ms": 9100
+  },
+  "conclusion": "Helius logsSubscribe remains Primary; GMGN trenches poll is fallback/cross-validation only",
+  "notes": [
+    "fixture benchmark for dry-run; live capture would run parallel WS+poll for 24h"
+  ]
+}

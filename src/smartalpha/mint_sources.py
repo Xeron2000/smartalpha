@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import subprocess
 import time
 from dataclasses import dataclass, field
 
@@ -11,8 +9,6 @@ from smartalpha.config import Settings
 
 DEX_BASE = "https://api.dexscreener.com"
 GECKO_BASE = "https://api.geckoterminal.com/api/v2"
-GMGN_RANK = "https://gmgn.ai/defi/quotation/v1/rank/sol/swaps/24h"
-GMGN_NEW = "https://gmgn.ai/defi/quotation/v1/pairs/sol/new_pairs/24h"
 
 _BROWSER_HEADERS = {
     "User-Agent": (
@@ -21,35 +17,6 @@ _BROWSER_HEADERS = {
     ),
     "Accept": "application/json",
 }
-
-
-def _gmgn_headers(cookie: str) -> dict[str, str]:
-    # ponytail: sid + __cf_bm is enough; cf_clearance optional
-    return {
-        **_BROWSER_HEADERS,
-        "Cookie": cookie.strip(),
-        "Referer": "https://gmgn.ai/",
-        "Origin": "https://gmgn.ai",
-    }
-
-
-def _gmgn_fetch_json(url: str, cookie: str) -> dict | None:
-    """GMGN sits behind Cloudflare; curl passes, httpx often gets 403."""
-    headers = _gmgn_headers(cookie)
-    cmd = ["curl", "-sS", "-m", "20"]
-    for k, v in headers.items():
-        cmd.extend(["-H", f"{k}: {v}"])
-    cmd.append(url)
-    try:
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
-    if not out.strip() or out.lstrip().startswith("<!"):
-        return None
-    try:
-        return json.loads(out)
-    except json.JSONDecodeError:
-        return None
 
 
 @dataclass
@@ -69,7 +36,7 @@ def find_candidate_mints(
     min_gain_pct: float = 300.0,
     limit: int = 20,
 ) -> tuple[list[CandidateMint], list[str]]:
-    """Priority: GMGN (cookie) → DexScreener → GeckoTerminal."""
+    """Priority: GMGN (OpenAPI GMGN_API_KEY) → DexScreener → GeckoTerminal."""
     settings = settings or Settings()
     notes: list[str] = []
     by_mint: dict[str, CandidateMint] = {}
@@ -101,20 +68,30 @@ def find_candidate_mints(
 
 
 def _from_gmgn(settings: Settings, min_gain_pct: float, limit: int) -> list[CandidateMint]:
-    from smartalpha.gmgn_cookie import ensure_cookie
+    from smartalpha.providers.gmgn import MissingGMGNKeyError, fetch_json
 
-    cookie = ensure_cookie(settings)
-    if not cookie:
+    # GMGN OpenAPI — no cookie, uses GMGN_API_KEY header
+    try:
+        from smartalpha.providers.gmgn import GMGN_NEW_PATH, GMGN_RANK_PATH
+    except ImportError:
         return []
 
     out: list[CandidateMint] = []
     seen: set[str] = set()
 
-    for url, tag in (
-        (f"{GMGN_RANK}?orderby=priceChange&direction=desc&limit={limit * 3}", "rank"),
-        (f"{GMGN_NEW}?limit={limit * 3}&platforms[]=pump", "new_pairs"),
+    for path, tag in (
+        (GMGN_RANK_PATH, "rank"),
+        (GMGN_NEW_PATH, "new_pairs"),
     ):
-        payload = _gmgn_fetch_json(url, cookie)
+        try:
+            if tag == "rank":
+                payload = fetch_json(path, {"orderby": "priceChange", "direction": "desc", "limit": limit * 3}, settings=settings)
+            else:
+                payload = fetch_json(path, {"limit": limit * 3, "platforms[]": "pump"}, settings=settings)
+        except MissingGMGNKeyError:
+            return []
+        except Exception:
+            continue
         if not payload or payload.get("code") not in (0, None):
             continue
         data = payload.get("data") or {}
@@ -126,7 +103,6 @@ def _from_gmgn(settings: Settings, min_gain_pct: float, limit: int) -> list[Cand
             gain = _gmgn_gain(row)
             launchpad = (row.get("launchpad") or row.get("launchpad_platform") or "").lower()
             if tag == "new_pairs":
-                # ungraduated mints rarely have traceable early buyers on DEX pair
                 if not _is_pump_mint(mint) or gain is None:
                     continue
             elif not _is_pump_mint(mint) and "pump" not in launchpad:
@@ -168,7 +144,6 @@ def _from_dexscreener(min_gain_pct: float, limit: int) -> list[CandidateMint]:
                 if mint and _is_pump_mint(mint):
                     seeds.append((mint, row.get("url")))
 
-    # ponytail: dedupe seeds, cap enrichment calls (~300 rpm DexScreener)
     seen: set[str] = set()
     unique: list[tuple[str, str | None]] = []
     for mint, url in seeds:

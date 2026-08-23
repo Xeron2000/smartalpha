@@ -1,0 +1,30 @@
+{
+  "hypothesis": "early_holder_concentration_low",
+  "verdict": "SURVIVED",
+  "kill_reason": "",
+  "attacks": [
+    {
+      "attack": "survivorship",
+      "detail": "discovery from pumped set; OOS must be walk-forward",
+      "severity": "info"
+    },
+    {
+      "attack": "stale_liq",
+      "detail": "checked BACKTEST_IGNORE_STALE_LIQ handling",
+      "severity": "info"
+    },
+    {
+      "attack": "label_drift",
+      "detail": "GMGN smart money labels are snapshot at observed_at, not permanent",
+      "severity": "info"
+    },
+    {
+      "attack": "regime",
+      "detail": "pump.fun regime may shift; need paper confirmation",
+      "severity": "info"
+    }
+  ],
+  "source": "redteam",
+  "observed_at": 1787450274,
+  "checked_at": 1787450274
+}

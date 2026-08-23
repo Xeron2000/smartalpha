@@ -1,0 +1,22 @@
+{
+  "name": "funder_repeat_hot_2_organic",
+  "thesis": "Funders that funded >=2 prior runners produce hot organic buyers within 90s that predict +300s EV after slippage",
+  "features": [
+    "hot_organic_buyers@90s",
+    "liquidity_usd@t0",
+    "copytrap_risk@90s",
+    "funder_grade@train"
+  ],
+  "entry_rule": "hot_organic_buyers>=2 and copytrap_risk!=high and liquidity>=5000 (allow stale>48h ignore)",
+  "exit_rule": "scale_half@100% + runner trail 30% drawdown, max 30m",
+  "expected_edge": "OOS net expectancy >0 at 300s net of 15% slippage",
+  "falsification_condition": "OOS n>=10 and best_net_tpsl<=0 OR win_rate<35% and net<=1 SOL",
+  "known_biases": [
+    "survivorship (discovery from pumped set)",
+    "stale liq",
+    "Dex proxy vs Kline"
+  ],
+  "generated_at": 1787450267,
+  "source": "hypothesis",
+  "observed_at": 1787450267
+}

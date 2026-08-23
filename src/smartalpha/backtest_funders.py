@@ -180,11 +180,11 @@ def run_funder_backtest(
         sl_pct=sl,
         exit_mode=exit_mode,
         notes=[
-            "proxy: DexScreener priceChange; not block-0 fill",
+            "price: GMGN Kline 30s/1m (true 90/180/300/900) → DexScreener fallback; not block-0 fill",
             f"slippage={slip*100:.0f}% position={position_sol} SOL",
             f"entry={'legacy' if legacy else 'balanced' if balanced else 'strict'}",
             f"min_liquidity_usd={s.signal_min_liquidity_usd:.0f}",
-            f"max_hold_min={ep.max_hold_min} (h1 proxy)",
+            f"max_hold_min={ep.max_hold_min} (h1 window)",
             _exit_note(exit_mode, ep, tp, sl),
             *session_notes,
         ],

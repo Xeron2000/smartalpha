@@ -125,7 +125,7 @@ def run_self_check() -> bool:
     _self_check_session_funders()
     _self_check_pump_parse()
     _self_check_mint_sources()
-    _self_check_gmgn_cookie_parse()
+    _self_check_gmgn_provider()
     _self_check_walk_forward_split()
     _self_check_signal_rules()
     trap = check_copytrap("Bait1111111111111111111111111111111111", demo_copytrap_events())
@@ -247,14 +247,20 @@ def _self_check_mint_sources() -> None:
     print("  mint-sources: ok")
 
 
-def _self_check_gmgn_cookie_parse() -> None:
-    from smartalpha.gmgn_cookie import parse_cookie, serialize_cookiejar
+def _self_check_gmgn_provider() -> None:
+    # validates providers/gmgn envelope
+    from smartalpha.providers.gmgn import MissingGMGNKeyError, _envelope
 
-    jar = parse_cookie("sid=abc; _wt=xyz; __cf_bm=old; intercom=x")
-    assert jar["sid"] == "abc"
-    out = serialize_cookiejar(jar, prefer_keys=("sid", "_wt", "__cf_bm"))
-    assert "sid=abc" in out and "intercom" not in out.split(";")[0]
-    print("  gmgn-cookie: ok")
+    env = _envelope({"ok": True}, "gmgn")
+    assert env["source"] == "gmgn" and "observed_at" in env
+    try:
+        from smartalpha.config import Settings
+        from smartalpha.providers.gmgn import _api_key
+
+        _api_key(Settings())
+    except MissingGMGNKeyError:
+        pass  # expected in CI without key
+    print("  gmgn provider: ok")
 
 
 def _self_check_walk_forward_split() -> None:

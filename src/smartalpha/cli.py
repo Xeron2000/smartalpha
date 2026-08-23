@@ -172,12 +172,17 @@ def main(argv: list[str] | None = None) -> None:
         help="Only discover candidate mints (no RPC funder trace)",
     )
 
-    gc = sub.add_parser("gmgn-cookie", help="Import / refresh / test GMGN cookies")
-    gc_sub = gc.add_subparsers(dest="gmgn_cmd", required=True)
-    gc_imp = gc_sub.add_parser("import", help="Paste browser cookie → data/gmgn.cookie")
-    gc_imp.add_argument("cookie", nargs="?", help="Cookie string (or pipe via stdin)")
-    gc_sub.add_parser("refresh", help="Refresh __cf_bm and save")
-    gc_sub.add_parser("test", help="Verify GMGN API access")
+    gm = sub.add_parser("gmgn", help="Test GMGN OpenAPI (GMGN_API_KEY)")
+    gm_sub = gm.add_subparsers(dest="gmgn_cmd", required=True)
+    gm_sub.add_parser("test", help="Verify GMGN API access via GMGN_API_KEY")
+    gm_sub.add_parser("kline", help="Fetch GMGN kline for a mint").add_argument("mint", help="Token mint")
+
+    rs = sub.add_parser("research", help="Research cycle: hypothesis→OOS→Reviewer→RedTeam→Leaderboard")
+    rs_sub = rs.add_subparsers(dest="research_cmd", required=True)
+    cyc = rs_sub.add_parser("cycle", help="Run full research cycle")
+    cyc.add_argument("--dry-run", action="store_true", help="Offline fixture run (no API required)")
+    rs_sub.add_parser("benchmark", help="Run GMGN vs Helius benchmark")
+    rs_sub.add_parser("hypotheses", help="List generated hypotheses")
 
     args = p.parse_args(argv)
     settings = Settings()
@@ -594,55 +599,36 @@ def main(argv: list[str] | None = None) -> None:
             }
             print(json.dumps(out, indent=2, ensure_ascii=False))
 
-    elif args.cmd == "gmgn-cookie":
-        from smartalpha.gmgn_cookie import (
-            cookie_file_path,
-            ensure_cookie,
-            import_cookie,
-            parse_cookie,
-            test_cookie,
-        )
+    elif args.cmd == "gmgn":
+        from smartalpha.providers.gmgn import get_kline, test_api_key
 
-        if args.gmgn_cmd == "import":
-            raw = args.cookie
-            if not raw:
-                raw = sys.stdin.read().strip()
-            if not raw:
-                print(json.dumps({"error": "paste cookie as argument or stdin"}, indent=2))
-                sys.exit(1)
-            try:
-                import_cookie(raw, settings)
-            except ValueError as exc:
-                print(json.dumps({"error": str(exc)}, indent=2))
-                sys.exit(1)
-            refreshed = ensure_cookie(settings)
-            ok, msg = test_cookie(refreshed)
-            print(
-                json.dumps(
-                    {
-                        "saved_to": str(cookie_file_path(settings)),
-                        "keys": list(parse_cookie(refreshed).keys()),
-                        "test_ok": ok,
-                        "test_message": msg,
-                    },
-                    indent=2,
-                    ensure_ascii=False,
-                )
-            )
-            sys.exit(0 if ok else 1)
-        elif args.gmgn_cmd == "refresh":
-            raw = ensure_cookie(settings, persist=True)
-            if not raw:
-                print(json.dumps({"error": "no cookie file — run gmgn-cookie import first"}, indent=2))
-                sys.exit(1)
-            ok, msg = test_cookie(raw)
+        if args.gmgn_cmd == "test":
+            ok, msg = test_api_key(settings)
             print(json.dumps({"test_ok": ok, "test_message": msg}, indent=2, ensure_ascii=False))
             sys.exit(0 if ok else 1)
-        elif args.gmgn_cmd == "test":
-            raw = ensure_cookie(settings, persist=False)
-            ok, msg = test_cookie(raw)
-            print(json.dumps({"test_ok": ok, "test_message": msg}, indent=2, ensure_ascii=False))
-            sys.exit(0 if ok else 1)
+        elif args.gmgn_cmd == "kline":
+            data = get_kline(args.mint, settings=settings)
+            print(json.dumps({"mint": args.mint, "kline": data}, indent=2, ensure_ascii=False))
+            sys.exit(0 if data else 1)
+
+    elif args.cmd == "research":
+        if args.research_cmd == "cycle":
+            from smartalpha.research.cycle import run_cycle
+
+            manifest = run_cycle(settings=settings, dry_run=bool(args.dry_run))
+            print(json.dumps(manifest, indent=2, ensure_ascii=False))
+        elif args.research_cmd == "benchmark":
+            from smartalpha.research.benchmark import run_benchmark, write_benchmark
+
+            rep = run_benchmark(settings=settings)
+            p = write_benchmark(rep)
+            print(json.dumps({"benchmark_path": str(p), **rep}, indent=2, ensure_ascii=False))
+        elif args.research_cmd == "hypotheses":
+            from smartalpha.research.hypothesis import generate_hypotheses
+            from smartalpha.research.memory import load_memory
+
+            hypos = generate_hypotheses(load_memory())
+            print(json.dumps(hypos, indent=2, ensure_ascii=False))
 
 
 def _launch_signal_dict(sig) -> dict:
