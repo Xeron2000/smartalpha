@@ -94,6 +94,7 @@ def run_walk_forward(
     position_sol: float = 0.5,
     mint_gains: dict[str, float] | None = None,
     mints_source: Path | None = None,
+    mint_times: dict[str, int] | None = None,
 ) -> WalkForwardResult:
     s = settings or Settings()
     rpc = SolanaRpc(rpc_url(s))
@@ -103,7 +104,10 @@ def run_walk_forward(
     if mints_source:
         gains = {**mint_gains_from_report(mints_source), **gains}
 
-    mint_times, skipped = resolve_mint_times(mint_list)
+    if mint_times is not None:
+        skipped: list[str] = [m for m in mint_list if m not in mint_times]
+    else:
+        mint_times, skipped = resolve_mint_times(mint_list)
     if split_mode == "calendar":
         train_mints, test_mints, train_win, test_win = split_mints_by_window(
             mint_times, train_days=train_days, test_days=test_days
@@ -163,11 +167,11 @@ def run_walk_forward(
                     # fallback: compute 60m gain manually from Kline closes
                     from smartalpha.research.execution import parse_kline_candles
                     candles = parse_kline_candles(raw)
-                    # entry is first tradable open after launch
+                    # entry is first tradable open after launch — use open to avoid 30s leakage (candle time is open)
                     entry_c = next((c for c in candles if c.time >= launch_ts), None)
                     label_c = next((c for c in candles if c.time >= launch_ts + 3600), None)
                     if entry_c and label_c and entry_c.open:
-                        gain_60m = (label_c.close - entry_c.open) / entry_c.open * 100
+                        gain_60m = (label_c.open - entry_c.open) / entry_c.open * 100
                         train_gains[m] = float(gain_60m)
                         continue
                     if gains_k and gains_k.get("gain_60m_pct") is not None:

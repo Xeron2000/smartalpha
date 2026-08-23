@@ -241,15 +241,9 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
             pass
     if seen_mints_loaded:
         mints = [(mint, None) for mint, _ in seen_mints_loaded]
-        n = len(seen_mints_loaded)
-        cut = max(1, min(n - 1, int(n * train_ratio)))
-        _ordered = sorted(seen_mints_loaded, key=lambda x: x[1])
-        train_mints = [m for m, _ in _ordered[:cut]]
-        test_mints = [m for m, _ in _ordered[cut:]]
-        mints_for_wf = [(m, None) for m in train_mints + test_mints]
-        wf = run_walk_forward(mints_for_wf, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5)
-        wf.train_mints = train_mints
-        wf.test_mints = test_mints
+        ledger_mint_times = {m: ts for m, ts in seen_mints_loaded}
+        # single split from ledger ts — no second split inside walk_forward
+        wf = run_walk_forward(mints, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5, mint_times=ledger_mint_times)
     else:
         # outcome-blind fallback: use universe helper (auto_discover path hidden there)
         from smartalpha.research.universe import auto_discover_fallback_path

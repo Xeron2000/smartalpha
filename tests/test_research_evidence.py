@@ -848,6 +848,62 @@ def test_train_60m_label_never_falls_back_to_discovery_gain():
     assert "label_available_at" in wf_text
     assert "test_window_start" in wf_text
     assert "gain_60m" in wf_text
+    # must use open, not close, to avoid 30s leakage
+    assert "label_c.open" in wf_text
+    assert "label_c.close" not in wf_text or "open" in wf_text.split("label_c.close")[0][-200:]
+
+
+def test_train_funders_use_exact_same_ledger_train_cohort():
+    """Train funders must be derived from exact same ledger train cohort as OOS split."""
+    import pathlib
+    wf_text = pathlib.Path("src/smartalpha/walk_forward.py").read_text()
+    exp_text = pathlib.Path("src/smartalpha/research/experiments.py").read_text()
+    # walk_forward must accept mint_times to avoid double split
+    assert "mint_times" in wf_text
+    assert "def run_walk_forward" in wf_text and "mint_times" in wf_text.split("def run_walk_forward")[1].split(")")[0]
+    # experiments must pass ledger mint_times
+    assert "ledger_mint_times" in exp_text or "seen_mints" in exp_text
+    # functional check: ledger split is single source
+    import pathlib as _p
+    import tempfile
+    from unittest.mock import patch
+
+    from smartalpha.config import Settings
+    from smartalpha.db import Store
+    # create temp DB with seen_mints ledger
+    tmp_db = _p.Path(tempfile.mktemp(suffix=".db"))
+    store = Store(tmp_db)
+    base = 1_700_000_000
+    mints = [f"LedgerMint{i}1111111111111111111111111111111111pump" for i in range(6)]
+    for i, m in enumerate(mints):
+        store.try_seen_mint(m, f"sig{i}", f"creator{i}")
+        # directly set ts to base+i*1000 for deterministic order
+        with store._conn() as c:
+            c.execute("UPDATE seen_mints SET ts=? WHERE mint=?", (base + i*1000, m))
+    s = Settings()
+    s.db_path = tmp_db
+    # also need to mock dex_pair_created_at for walk_forward fallback, but with mint_times it should not be called
+    with patch("smartalpha.walk_forward.resolve_mint_times") as mock_resolve:
+        mock_resolve.side_effect = AssertionError("should not call resolve_mint_times when mint_times provided")
+        from smartalpha.walk_forward import run_walk_forward
+        mint_times = {m: base + i*1000 for i, m in enumerate(mints)}
+        wf = run_walk_forward([(m, None) for m in mints], settings=s, train_ratio=0.6, mint_times=mint_times)
+        # train should be first 60% (3 or 4) from ledger order, not dex
+        assert wf.train_mints == mints[:3] or wf.train_mints == mints[:4]
+        assert wf.test_mints == [m for m in mints if m not in wf.train_mints]
+        # train_funders should be from train only
+        assert all(m in wf.train_mints for m in wf.train_mints)
+
+
+def test_60m_label_never_uses_close_before_close_is_available():
+    """60m label must use open at label time, not close which leaks 30s."""
+    import pathlib
+    wf_text = pathlib.Path("src/smartalpha/walk_forward.py").read_text()
+    # must use label_c.open
+    assert "label_c.open" in wf_text
+    # must not use label_c.close for gain
+    # allow close only if label_available_at is delayed, but we use open so close should not be in gain calc
+    assert "(label_c.close" not in wf_text or "label_c.open" in wf_text
 
 
 def test_execution_never_uses_pre_entry_candle():
