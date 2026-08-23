@@ -103,7 +103,14 @@ def analyze_launch(
                 has_launch = any((s.get("blockTime") or 0) <= launch_ts for s in all_sigs)
                 if not has_launch:
                     window_complete = False
-        sigs = all_sigs[-max_sigs*3:] if len(all_sigs) > max_sigs*3 else all_sigs
+        # Outcome-blind: process FULL window, not truncated 120. If window too large, mark incomplete.
+        window_sigs = [s for s in all_sigs if (s.get("blockTime") or 0) >= (launch_ts or 0) and (as_of_ts is None or (s.get("blockTime") or 0) <= as_of_ts)] if launch_ts is not None else all_sigs
+        MAX_WINDOW_SIGS = 500
+        if len(window_sigs) > MAX_WINDOW_SIGS:
+            window_complete = False
+            notes.append(f"HISTORICAL_INCOMPLETE: window_sigs {len(window_sigs)} > {MAX_WINDOW_SIGS} — early window too large to be complete")
+        # process all window_sigs, not truncated
+        sigs = window_sigs
         for sig_entry in reversed(sigs):
             if sig_entry.get("err"):
                 continue

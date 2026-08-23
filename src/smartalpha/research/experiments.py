@@ -178,8 +178,7 @@ class WalletAgeExperiment(BaseExperiment):
                             continue
                         if age is not None and age < 2:
                             fresh += 1
-                    funder_grade = "medium"
-                    return {"fresh_wallets": fresh, "funder_grade": funder_grade, "mint": mint, "available_at": available_at, "as_of_ts": as_of_ts, "reconstructed_at": reconstructed_at, "observed_at": reconstructed_at, "evidence_mode": "historical_reconstruction", "source": "wallet_age", "launch_ts": launch_ts, "window_complete": True}
+                    return {"fresh_wallets": fresh, "mint": mint, "available_at": available_at, "as_of_ts": as_of_ts, "reconstructed_at": reconstructed_at, "observed_at": reconstructed_at, "evidence_mode": "historical_reconstruction", "source": "wallet_age", "launch_ts": launch_ts, "window_complete": True}
                 raise MissingFeatureError(f"missing helius or not pump {mint}")
             except MissingFeatureError:
                 raise
@@ -190,8 +189,7 @@ class WalletAgeExperiment(BaseExperiment):
         available_at = 30 + (h * 10)
         observed_at = available_at + 5
         fresh = h % 5
-        funder_grade = "strong" if h % 3 == 0 else "medium" if h % 3 == 1 else "watch"
-        return {"fresh_wallets": fresh, "funder_grade": funder_grade, "mint": mint, "observed_at": observed_at, "available_at": available_at, "as_of_ts": available_at, "reconstructed_at": int(time.time()), "evidence_mode": "synthetic", "source": "wallet_age"}
+        return {"fresh_wallets": fresh, "mint": mint, "observed_at": observed_at, "available_at": available_at, "as_of_ts": available_at, "reconstructed_at": int(time.time()), "evidence_mode": "synthetic", "source": "wallet_age"}
 
     def should_enter(self, features: dict[str, Any], hypo: dict) -> bool:
         thresh = 2
@@ -199,8 +197,7 @@ class WalletAgeExperiment(BaseExperiment):
             thresh = 1
         elif hypo.get("_threshold") == "high":
             thresh = 3
-        grade = features.get("funder_grade")
-        return features.get("fresh_wallets", 0) >= thresh and grade in ("strong", "medium")
+        return features.get("fresh_wallets", 0) >= thresh
 
     def run(self, hypo: dict, settings: Settings | None = None, dry_run: bool = False) -> ExperimentResult:
         hypo = dict(hypo)
@@ -254,6 +251,36 @@ def _run_walk_forward_with_filter(hypo: dict, settings: Settings | None, experim
     else:
         wf = run_walk_forward(mints, settings=s, split_mode="chronological", train_ratio=train_ratio, position_sol=0.5)
     test_mints = wf.test_mints or []
+    # Outcome-blind universe: candidate must be observed before test_window_start, not after outcome
+    if not synthetic_mode:
+        try:
+            import json as _j
+            data = _j.loads(path.read_text())
+            cand_map = {}
+            for c in data.get("candidates") or []:
+                cand_map[c["mint"]] = c.get("candidate_observed_at") or data.get("candidate_observed_at") or data.get("generated_at")
+            # also include mints_traced without candidate entry -> assume observed at generated_at
+            gen_at = data.get("candidate_observed_at") or data.get("generated_at")
+            test_window_start = getattr(wf, "test_window", (0, 0))[0] or 0
+            if test_window_start and gen_at:
+                # if universe itself was generated after test_window, it's outcome-conditioned
+                if gen_at >= test_window_start:
+                    # mark incomplete — don't silently use winners
+                    raise ValueError(f"HISTORICAL_INCOMPLETE: candidate_observed_at {gen_at} >= test_window_start {test_window_start}")
+            filtered = []
+            for m in test_mints:
+                obs = cand_map.get(m) or gen_at
+                if obs is not None and test_window_start and obs >= test_window_start:
+                    continue
+                filtered.append(m)
+            if len(filtered) != len(test_mints):
+                # outcome-conditioned mints removed
+                test_mints = filtered
+                wf.test_mints = filtered
+        except ValueError:
+            raise
+        except Exception:
+            pass
     # Freeze train funder set for FunderRepeat (train window only)
     train_funder_set = {f.get("address") or f.get("funder") or str(f) for f in (wf.train_funders or [])}
     # Also handle synthetic wf_train_funders

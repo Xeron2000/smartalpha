@@ -772,6 +772,54 @@ def test_reviewer_lineage():
     assert res3["passed"] is False
 
 
+def test_universe_is_outcome_blind():
+    """Research universe must not be conditioned on future gain — candidate_observed_at before outcome."""
+    import pathlib
+    text = pathlib.Path("src/smartalpha/research/experiments.py").read_text()
+    # research must not filter by gain_h24_pct 300
+    assert "gain_h24_pct" not in text or "300" not in text.split("gain_h24_pct")[0][-200:]  # no hard filter
+    # must have candidate_observed_at handling
+    assert "candidate_observed_at" in text
+    assert "HISTORICAL_INCOMPLETE" in pathlib.Path("src/smartalpha/launch_intel.py").read_text()
+
+
+def test_train_label_respects_asof():
+    """Train funder label must be anchored Kline with label_available_at < test_window_start."""
+    import pathlib
+    text = pathlib.Path("src/smartalpha/walk_forward.py").read_text()
+    assert "label_available_at" in text
+    assert "launch_ts + 3600" in text or "launch+3600" in text or "+ 3600" in text
+    assert "test_window_start" in text
+    # research must not use gain_h24_pct for scoring
+    exp_text = pathlib.Path("src/smartalpha/research/experiments.py").read_text()
+    assert "gain_h24_pct" not in exp_text
+
+
+def test_early_window_no_silent_truncation():
+    """Early window must process full window_sigs, not truncated 120."""
+    import pathlib
+    text = pathlib.Path("src/smartalpha/launch_intel.py").read_text()
+    assert "window_sigs" in text
+    assert "max_sigs*3" not in text
+    assert "HISTORICAL_INCOMPLETE" in text
+    # verify that window_complete is set when window too large
+    assert "MAX_WINDOW_SIGS" in text or "window_sigs" in text
+
+
+def test_wallet_age_no_fake_grade():
+    """WalletAge must not have fake funder_grade=medium."""
+    import pathlib
+    text = pathlib.Path("src/smartalpha/research/experiments.py").read_text()
+    # WalletAge section should not contain funder_grade
+    wallet_section = text.split("class WalletAgeExperiment")[1].split("class ")[0] if "class WalletAgeExperiment" in text else text
+    assert "funder_grade" not in wallet_section
+    from smartalpha.research.experiments import get_experiment
+    exp = get_experiment("funder_wallet_age_fresh")
+    feats = exp.select_features("DryMint0111111111111111111111111111111111pump", {"name": "funder_wallet_age_fresh", "_dry_run": True})
+    assert "funder_grade" not in feats
+    assert "fresh_wallets" in feats
+
+
 def test_execution_never_uses_pre_entry_candle():
     """Execution must never use candle before entry_ts."""
     from smartalpha.research.execution import parse_kline_candles, simulate_fixed

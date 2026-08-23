@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -91,7 +92,10 @@ def write_auto_discover_report(report: AutoDiscoverReport, path: Path | None = N
     p = path or ROOT / "data" / "auto_discover.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     dr = report.discover
+    now = int(time.time())
     payload = {
+        "generated_at": now,
+        "candidate_observed_at": now,
         "candidates": [
             {
                 "mint": c.mint,
@@ -100,6 +104,7 @@ def write_auto_discover_report(report: AutoDiscoverReport, path: Path | None = N
                 "pair": c.pair,
                 "dex": c.dex,
                 "url": c.url,
+                "candidate_observed_at": now,
             }
             for c in report.candidates
         ],

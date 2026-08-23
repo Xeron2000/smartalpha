@@ -135,13 +135,41 @@ def run_walk_forward(
             min_mint_hits=min_mint_hits,
             settings=s,
         )
-        # Only use discovery gains for train mints (avoid test leakage of labels)
-        train_gains = {m: gains[m] for m in train_mints if m in gains}
+        # Research: train label must be anchored historical Kline, not auto_discover.gain_h24_pct
+        # label_available_at = launch_ts + 3600 (60m horizon) must be < test_window_start
+        train_gains: dict[str, float] = {}
+        test_window_start = test_win[0] if test_win[0] else int(time.time())
+        for m in train_mints:
+            launch_ts = mint_times.get(m)
+            if not launch_ts:
+                continue
+            label_available_at = launch_ts + 3600  # 60m horizon
+            if label_available_at >= test_window_start:
+                continue  # label not yet available before test — HISTORICAL_INCOMPLETE
+            # try anchored Kline gain at launch+60m
+            try:
+                from smartalpha.funder import kline_candles
+                from smartalpha.providers.gmgn import kline_gains_anchored
+                raw = kline_candles(m, signal_ts=launch_ts)
+                if raw:
+                    gains_k = kline_gains_anchored(raw, launch_ts, interval="30s")
+                    if gains_k and gains_k.get("gain_60m_pct") is not None:
+                        train_gains[m] = float(gains_k["gain_60m_pct"])
+                        continue
+                    # fallback: try 60m via 1m Kline or direct gain_3600
+                    if gains_k and gains_k.get("gain_3600_pct") is not None:
+                        train_gains[m] = float(gains_k["gain_3600_pct"])
+                        continue
+                # fallback to discovery gain only if Kline unavailable and label still historically available
+                if m in gains and label_available_at < test_window_start:
+                    # still outcome-blind if candidate_observed_at < test_window, but prefer Kline
+                    train_gains[m] = float(gains[m])
+            except Exception:
+                continue
         train_funders = enrich_funder_scores(
             dr.recommended,
             mint_gains=train_gains,
             sleep=0.0,
-            # Research: never use live today state for train scoring; only outcome before test_window
             fetch_live=False,
         )
         notes.append(
