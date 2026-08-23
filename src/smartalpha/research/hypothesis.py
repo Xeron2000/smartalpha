@@ -60,8 +60,35 @@ def generate_hypotheses(memory: dict | None = None, limit: int = 3) -> list[dict
     from smartalpha.research.memory import is_falsified
 
     out: list[dict] = []
+    # First, try DSL examples via compiler (V3)
+    try:
+        from smartalpha.research.dsl_compiler import compile_file, list_examples
+        for p in list_examples():
+            if len(out) >= limit:
+                break
+            try:
+                hypo = compile_file(p)
+                # map DSL hypo to legacy required fields for downstream
+                h = dict(hypo)
+                h.setdefault("thesis", h.get("description", "dsl"))
+                h.setdefault("expected_edge", "OOS EV >0")
+                h.setdefault("known_biases", [])
+                h.setdefault("exit_rule", hypo.get("exit_rule", ""))
+                h["generated_at"] = int(time.time())
+                h["source"] = "dsl"
+                h["observed_at"] = int(time.time())
+                out.append(h)
+            except Exception:
+                continue
+    except Exception:
+        pass
     for tmpl in TEMPLATES:
+        if len(out) >= limit:
+            break
         if is_falsified(tmpl["name"], memory):
+            continue
+        # avoid duplicate names from DSL
+        if any(o["name"] == tmpl["name"] for o in out):
             continue
         h = dict(tmpl)
         h["generated_at"] = int(time.time())

@@ -1,0 +1,8 @@
+{
+  "name": "funder_wallet_age_fresh",
+  "description": "Fresh wallets funded recently indicate copy-trading risk but also momentum",
+  "features": ["fresh_wallets"],
+  "entry_rule": "fresh_wallets >= 2",
+  "exit_rule": "dynamic_trail",
+  "falsification_condition": "EV <= 0"
+}

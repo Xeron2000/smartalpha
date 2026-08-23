@@ -97,6 +97,14 @@ def run_cycle(settings: Settings | None = None, dry_run: bool = False) -> dict:
     }
     mem["hypotheses"] = list({*mem.get("hypotheses", []), *[h["name"] for h in hypos]})
     save_memory(mem)
+    # V3: append to persistent ledger
+    try:
+        from smartalpha.research.memory import append_ledger
+        for h in hypos:
+            name = h["name"]
+            append_ledger({"hypothesis_id": name, "DSL": h, "lineage": results[name], "verdict": verdicts[name], "observed_at": now})
+    except Exception:
+        pass
     manifest = {
         "run_id": run_id,
         "generated_at": now,

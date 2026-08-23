@@ -945,3 +945,47 @@ def test_execution_never_uses_pre_entry_candle():
     pnl2, _ = simulate_fixed(filtered2, 1.0, 0.5, 0.15, tp_pct=100, sl_pct=30)
     # Should not be SL from pre-entry
     assert pnl2 is not None and "sl@candle0" not in str(pnl2)  # just check not using pre-entry
+
+
+def test_memory_ledger():
+    """Memory ledger must be append-only with hypothesis_id/verdict."""
+    import pathlib as _p
+    import tempfile
+
+    from smartalpha.research.memory import append_ledger, query_ledger, read_ledger
+    # use temp ledger via monkeypatching path
+    tmp = _p.Path(tempfile.mktemp(suffix=".jsonl"))
+    import smartalpha.research.memory as mem
+    orig_fn = mem.ledger_path
+    mem.ledger_path = lambda: tmp
+    try:
+        append_ledger({"hypothesis_id": "test_hypo", "verdict": "FALSIFIED", "DSL": {}})
+        append_ledger({"hypothesis_id": "test_hypo2", "verdict": "PROMISING", "DSL": {}})
+        rows = read_ledger()
+        assert len(rows) == 2
+        assert any(r["hypothesis_id"] == "test_hypo" and r["verdict"] == "FALSIFIED" for r in rows)
+        prom = query_ledger("PROMISING")
+        assert len(prom) == 1 and prom[0]["hypothesis_id"] == "test_hypo2"
+        # dedup: same id+verdict should not duplicate
+        append_ledger({"hypothesis_id": "test_hypo", "verdict": "FALSIFIED", "DSL": {}})
+        assert len(read_ledger()) == 2
+    finally:
+        mem.ledger_path = orig_fn
+        if tmp.exists():
+            tmp.unlink()
+
+
+def test_dsl_compiler():
+    """DSL compiler must validate 5 examples and reject bad DSL."""
+    from smartalpha.research.dsl_compiler import compile_file, compile_hypothesis, list_examples
+    examples = list_examples()
+    assert len(examples) >= 5
+    for p in examples:
+        hypo = compile_file(p)
+        assert "name" in hypo and "falsification_condition" in hypo
+    # bad DSL should be rejected
+    import pytest
+    with pytest.raises(ValueError):
+        compile_hypothesis({"name": "bad", "description": "short"})
+    with pytest.raises(ValueError):
+        compile_hypothesis({"name": "BadName!", "description": "long enough description here", "features": ["x"], "entry_rule": "x", "falsification_condition": "y", "unknown": 1})
