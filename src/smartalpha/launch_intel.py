@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from smartalpha.config import Settings
-from smartalpha.funder import wallet_age_hours
+from smartalpha.funder import wallet_age_hours, wallet_age_hours_at
 from smartalpha.rpc import SolanaRpc
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ def analyze_launch(
 ) -> LaunchIntel:
     """Behavior-first: score early buyers by age/funder/bundle, not static watchlist.
     When as_of_ts is set, only transactions with launch_ts <= ts <= as_of_ts are considered (historical)."""
-    from smartalpha.funder import dex_pair_address, resolve_first_funder, wallet_age_hours, wallet_age_hours_at
+    from smartalpha.funder import dex_pair_address, resolve_first_funder
 
     settings_obj = settings or Settings()
     hot = hot_funders if hot_funders is not None else {}

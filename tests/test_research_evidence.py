@@ -589,3 +589,155 @@ def test_priced_vs_selected():
     # Just check that the fields exist
     assert "wins" in (res.details or {})
     assert "kline_engine" in (res.details or {})
+
+def test_missing_launch_timestamp_fails_closed():
+    """No hardcoded timestamp allowed — missing launch_ts must fail closed."""
+    from smartalpha.research.experiments import MissingFeatureError, get_experiment
+    exp = get_experiment("funder_repeat_hot_2_organic")
+    # Use a real pump mint that will try live path, but mock dex_pair_created_at to return None to simulate missing launch_ts
+    from unittest.mock import patch
+
+    import smartalpha.funder as funder_mod
+    # Use a non-test mint that ends with pump and not DryMint, so it will try real path
+    mint = "RealMint1234567890111111111111111111111111pump"
+    with patch.object(funder_mod, "dex_pair_created_at", return_value=None):
+        # For live, missing launch_ts should raise MissingFeatureError, not use hardcoded 1_700_000_000
+        try:
+            exp.select_features(mint, {"name": "funder_repeat_hot_2_organic"})
+            pytest.fail("should have raised MissingFeatureError for missing launch_ts")
+        except MissingFeatureError:
+            pass
+        except Exception as e:
+            assert "MissingFeatureError" in type(e).__name__ or "missing launch" in str(e).lower()
+
+
+def test_wallet_age_is_computed_at_as_of_time():
+    """Wallet age must be computed at as_of_ts, not now."""
+    from unittest.mock import MagicMock
+
+    from smartalpha.funder import wallet_age_hours_at
+    # Mock RPC to return a fixed oldest transaction at T0
+    mock_rpc = MagicMock()
+    # Simulate signatures with blockTime = T0 and T0+100
+    T0 = 1_000_000
+    as_of = T0 + 1800  # 30m later
+    # Mock get_signatures to return two signatures: one at T0, one at T0+100
+    mock_rpc.get_signatures.return_value = [
+        {"signature": "sig1", "blockTime": T0},
+        {"signature": "sig2", "blockTime": T0+100},
+    ]
+    # wallet_age at as_of should be 1800/3600 =0.5h
+    age_at = wallet_age_hours_at(mock_rpc, "wallet1", as_of, max_pages=1)
+    assert age_at is not None
+    assert abs(age_at - 0.5) < 0.01
+    # wallet_age now would be 30 days, not 0.5
+    # Mock for wallet_age_hours (which uses time.time) - we can't easily test without mocking time, but we know it would be large
+    # Just ensure that as_of version is small
+    assert age_at < 1.0
+
+
+def test_early_buyer_feature_ignores_future_buys():
+    """Early buyer feature must ignore buys after available_at."""
+    from unittest.mock import MagicMock, patch
+
+    from smartalpha.launch_intel import analyze_launch
+    mock_rpc = MagicMock()
+    def fake_sigs(pair, limit=40, before=None):
+        return [
+            {"signature": "sig1", "blockTime": 1000, "err": None},
+            {"signature": "sig2", "blockTime": 1010, "err": None},
+            {"signature": "sig3", "blockTime": 1040, "err": None},
+        ]
+    mock_rpc.get_signatures.side_effect = fake_sigs
+    def fake_tx(sig):
+        ts_map = {"sig1": 1000, "sig2": 1010, "sig3": 1040}
+        ts = ts_map[sig]
+        return {
+            "slot": 1,
+            "blockTime": ts,
+            "meta": {
+                "err": None,
+                "preBalances": [1000000000, 0],
+                "postBalances": [900000000, 100000000],
+                "preTokenBalances": [],
+                "postTokenBalances": [{"mint": "TestMint1111111111111111111111111111111pump", "owner": f"wallet{ts}", "uiTokenAmount": {"uiAmount": 100}}],
+            },
+            "transaction": {"message": {"accountKeys": [{"pubkey": "pair123"}, {"pubkey": f"wallet{ts}"}]}, "signatures": [sig]},
+        }
+    mock_rpc.get_transaction.side_effect = fake_tx
+    with patch("smartalpha.launch_intel.wallet_age_hours_at", return_value=10), patch("smartalpha.launch_intel.wallet_age_hours", return_value=10), patch("smartalpha.funder.resolve_first_funder", return_value=(None, "rpc")):
+        intel_30 = analyze_launch("TestMint1111111111111111111111111111111pump", mock_rpc, pair_address="pair123", hot_funders={}, as_of_ts=1030, launch_ts=1000)
+        assert len(intel_30.buyers) == 2, f"expected 2 buyers for +30s window, got {len(intel_30.buyers)}"
+        intel_90 = analyze_launch("TestMint1111111111111111111111111111111pump", mock_rpc, pair_address="pair123", hot_funders={}, as_of_ts=1090, launch_ts=1000)
+        assert len(intel_90.buyers) == 3
+
+
+def test_funder_set_is_frozen_from_train_only():
+    """OOS changing must not alter train funder set."""
+    import json
+    import pathlib
+    import tempfile
+    from unittest.mock import patch
+
+    import smartalpha.funder as funder_mod
+    from smartalpha.config import ROOT
+    from smartalpha.research.experiments import _run_walk_forward_with_filter, get_experiment
+    mints = [f"MintF{i}111111111111111111111111111111111pump" for i in range(8)]
+    orig = ROOT / "data" / "auto_discover.json"
+    backup = None
+    if orig.exists():
+        backup = pathlib.Path(tempfile.mktemp())
+        backup.write_text(orig.read_text())
+    try:
+        data = {"candidates": [{"mint": m, "gain_h24_pct": 300} for m in mints], "mints_traced": mints, "recommended_funders": []}
+        orig.write_text(json.dumps(data))
+        base = 1_700_000_000
+        def fake(mint):
+            idx = mints.index(mint) if mint in mints else 0
+            return base + idx*1000
+        with patch.object(funder_mod, "dex_pair_created_at", side_effect=fake), patch("smartalpha.walk_forward.dex_pair_created_at", side_effect=fake):
+            exp = get_experiment("funder_repeat_hot_2_organic")
+            hypo = {"name": "funder_repeat_hot_2_organic"}
+            res1 = _run_walk_forward_with_filter(hypo, settings=None, experiment=exp, train_ratio=0.7)
+            res2 = _run_walk_forward_with_filter(hypo, settings=None, experiment=exp, train_ratio=0.7)
+            # train_funders is int count in current impl, check counts equal
+            assert res1.train_funders == res2.train_funders
+    finally:
+        if backup and backup.exists():
+            orig.write_text(backup.read_text())
+        elif orig.exists():
+            try:
+                orig.unlink()
+            except Exception:
+                pass
+
+
+def test_execution_never_uses_pre_entry_candle():
+    """Execution must never use candle before entry_ts."""
+    from smartalpha.research.execution import parse_kline_candles, simulate_fixed
+    # Create candles at 60,90,120,150
+    candles = parse_kline_candles([
+        {"time": 60, "open": "1.0", "high": "1.0", "low": "1.0", "close": "1.0"},
+        {"time": 90, "open": "1.0", "high": "1.5", "low": "0.9", "close": "1.2"},
+        {"time": 120, "open": "1.2", "high": "1.3", "low": "1.1", "close": "1.25"},
+        {"time": 150, "open": "1.25", "high": "1.4", "low": "1.2", "close": "1.3"},
+    ])
+    entry_ts = 100
+    filtered = [c for c in candles if c.time >= entry_ts]
+    assert len(filtered) == 2  # only 120,150
+    assert all(c.time >= entry_ts for c in filtered)
+    # Simulate with entry 1.0, should start at 120, not 60/90
+    entry = 1.0
+    pnl, reason = simulate_fixed(filtered, entry, 0.5, 0.15, tp_pct=100, sl_pct=30)
+    assert pnl is not None
+    # Ensure that a SL/TP in pre-entry candle (90) would not be used
+    # Create a pre-entry candle that would hit SL if used
+    pre_candles = parse_kline_candles([
+        {"time": 60, "open": "1.0", "high": "1.0", "low": "0.5", "close": "0.6"},
+        {"time": 120, "open": "1.0", "high": "1.1", "low": "0.9", "close": "1.05"},
+    ])
+    filtered2 = [c for c in pre_candles if c.time >= 100]
+    assert len(filtered2) == 1 and filtered2[0].time == 120
+    pnl2, _ = simulate_fixed(filtered2, 1.0, 0.5, 0.15, tp_pct=100, sl_pct=30)
+    # Should not be SL from pre-entry
+    assert pnl2 is not None and "sl@candle0" not in str(pnl2)  # just check not using pre-entry

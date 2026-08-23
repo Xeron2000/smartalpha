@@ -61,7 +61,12 @@ class FunderRepeatExperiment(BaseExperiment):
                     # Historical: only buyers with blockTime <= available_at
                     # For live, available_at is launch+90, but we don't yet know launch_ts, so get it via dex_pair_created_at
                     from smartalpha.funder import dex_pair_created_at
-                    launch_ts = dex_pair_created_at(mint) or 1_700_000_000
+                    launch_ts = dex_pair_created_at(mint)
+                    if launch_ts is None:
+                        if dry:
+                            launch_ts = 0
+                        else:
+                            raise MissingFeatureError(f"missing launch_ts for {mint}")
                     available_at = launch_ts + 90
                     observed_at = available_at + 5
                     intel = analyze_launch(mint, rpc, settings=s, hot_funders=hot_funders, as_of_ts=available_at, launch_ts=launch_ts)
@@ -78,7 +83,7 @@ class FunderRepeatExperiment(BaseExperiment):
         # Dry-run synthetic
         import hashlib
         h = int(hashlib.sha256(mint.encode()).hexdigest(), 16) % 10
-        available_at = 1_700_000_000 + 90 + (h * 10)
+        available_at = 90 + (h * 10)
         observed_at = available_at + 5
         hot_organic = (h % 4)
         repeated = (h % 2 == 0)
@@ -121,7 +126,7 @@ class HolderConcentrationExperiment(BaseExperiment):
         import hashlib
         h_full = int(hashlib.sha256(mint.encode()).hexdigest(), 16) % 100
         h = h_full % 10
-        available_at = 1_700_000_000 + 30 + (h * 10)
+        available_at = 30 + (h * 10)
         observed_at = available_at + 5
         top10 = (h_full % 100) / 100
         hot_organic = (h_full % 3)
@@ -161,7 +166,12 @@ class WalletAgeExperiment(BaseExperiment):
                 if s.helius_key and mint.endswith("pump") and not mint.startswith(("fixture", "DryMint", "Mint")):
                     rpc = SolanaRpc(rpc_url(s))
                     from smartalpha.funder import dex_pair_created_at, wallet_age_hours_at
-                    launch_ts = dex_pair_created_at(mint) or 1_700_000_000
+                    launch_ts = dex_pair_created_at(mint)
+                    if launch_ts is None:
+                        if dry:
+                            launch_ts = 0
+                        else:
+                            raise MissingFeatureError(f"missing launch_ts for {mint}")
                     available_at = launch_ts + 30
                     observed_at = available_at + 5
                     intel = analyze_launch(mint, rpc, settings=s, hot_funders={}, as_of_ts=available_at, launch_ts=launch_ts)
@@ -179,7 +189,7 @@ class WalletAgeExperiment(BaseExperiment):
                 raise MissingFeatureError(f"missing wallet_age feature for {mint}: {exc}") from exc
         import hashlib
         h = int(hashlib.sha256((mint + "fresh").encode()).hexdigest(), 16) % 10
-        available_at = 1_700_000_000 + 30 + (h * 10)
+        available_at = 30 + (h * 10)
         observed_at = available_at + 5
         fresh = h % 5
         funder_grade = "strong" if h % 3 == 0 else "medium" if h % 3 == 1 else "watch"
