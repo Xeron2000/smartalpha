@@ -24,7 +24,6 @@ class LaunchSignal:
     ts: int
     recommendation: str
     copytrap_risk: str
-    hot_funder_hits: list[str] = field(default_factory=list)
     bundler_wallets: list[str] = field(default_factory=list)
     top_buyers: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)

@@ -10,10 +10,6 @@ DEX_BASE = "https://api.dexscreener.com"
 _HEADERS = {"Accept": "application/json", "User-Agent": "smartalpha/0.1"}
 
 
-def _envelope(data: Any, source: str = "dexscreener") -> dict:
-    return {"data": data, "source": source, "observed_at": int(time.time())}
-
-
 def get_pair_meta(mint: str) -> dict | None:
     url = f"{DEX_BASE}/latest/dex/tokens/{mint}"
     with httpx.Client(timeout=15.0, headers=_HEADERS) as client:
