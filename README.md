@@ -38,17 +38,15 @@ uv run smartalpha paper-log health
 uv run smartalpha prove data/auto_discover.json
 ```
 
-## 命令
+## 核心命令
 
 | 命令 | 作用 |
 |------|------|
-| `auto-discover` | 拉涨过的 mint → 追 funder → 写报告 |
-| `watch-launches` | Helius WS 监听 Create → 分析 → paper |
-| `paper-log` | `export` / `catch-up` / `list` / `health` |
-| `prove` | walk-forward OOS + paper 门禁 |
-| `scan-mint` / `trace-funders` | 单 mint 诊断 |
-| `backtest-funders` / `walk-forward` | 历史回测 |
-| `gmgn-cookie` | 导入/刷新 GMGN cookie |
+| `watch-launches` | Helius WS 实时监听新 Mint → 四大支柱过滤 → paper |
+| `paper-log` | `export` / `catch-up` / `list` / `health`（延迟快照与动态滑点收益追踪） |
+| `prove` | 样本外 OOS 统计检验 + 实盘 Paper 门禁裁决 |
+| `scan-mint` | 单 mint 早期流动性、买家去重与微观结构诊断 |
+| `self-check` | 本地离线全流程自检 |
 
 ## 报告字段契约（关键）
 

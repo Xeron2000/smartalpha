@@ -1,72 +1,37 @@
 # SmartAlpha Research Goal
 
-> **Mission:** build a machine that continuously discovers, tests, falsifies, and promotes measurable on-chain alpha.
+> **Mission:** Build a machine that continuously measures, tests, falsifies, and proves Solana early-launch alpha using first-principles market microstructure.
 >
-> SmartAlpha is not trying to produce more strategies. It is trying to produce **fewer false beliefs** and a small number of strategies that survive realistic out-of-sample and paper validation.
+> SmartAlpha is not trying to produce more strategies. It is trying to produce **fewer false beliefs** and execute strictly on strategies that survive realistic slippage, price impact, and paper validation.
 
-Last updated: 2026-08-23
-
----
-
-## 1. North Star
-
-SmartAlpha exists to answer one question with reproducible evidence:
-
-> **Can wallet / funder / early-buyer behavior predict a tradable positive-EV entry after latency, slippage, fees, and selection bias?**
-
-The project succeeds when it can run this loop with minimal human intervention:
-
-```text
-observe data
-    ↓
-generate falsifiable hypothesis
-    ↓
-implement experiment
-    ↓
-historical test
-    ↓
-walk-forward OOS
-    ↓
-robustness / adversarial review
-    ↓
-paper trading
-    ↓
-PROVEN or FALSIFIED
-    ↓
-research memory
-```
-
-The objective is **not**:
-
-- maximizing backtest PnL;
-- finding parameters that fit one dataset;
-- maximizing the number of alerts;
-- maximizing the number of AI-generated strategies;
-- auto-trading before the strategy is proven;
-- replacing raw chain facts with opaque model opinions.
-
-The primary optimization target is:
-
-> **OOS net expectancy after realistic execution assumptions, followed by live paper expectancy.**
+Last updated: 2026-08-31
 
 ---
 
-## 2. Research Scope: stay narrow
+## 1. North Star & Production Thesis
 
-Until the current thesis is either proven or falsified, SmartAlpha focuses on **Solana early-launch wallet alpha**, especially Pump.fun-style launches.
+> **Active Strategy Spec:** [`docs/STRATEGY_SPEC.md`](docs/STRATEGY_SPEC.md)
+> **Proof Protocol & Gates:** [`docs/PROOF_PROTOCOL.md`](docs/PROOF_PROTOCOL.md)
 
-Primary research objects:
+### Core Question
+> **Can on-chain liquidity depth, unique buyer entropy, and turnover velocity predict a tradable positive-EV entry after price impact, DEX fees, and Jito/Gas friction?**
 
-1. funder / funding-source relationships;
-2. wallet clusters across multiple mints;
-3. early-buyer timing and overlap;
-4. wallet historical profitability and recent form;
-5. creator / dev history;
-6. organic vs sniper / bundler / insider behavior;
-7. holder concentration and early distribution;
-8. smart-money participation and exit behavior;
-9. launch liquidity / market-cap / volume context;
-10. latency sensitivity and copy-tradeability.
+### Empirical Status
+1. **FALSIFIED**: Blind sniping without liquidity/entropy filters (Net EV: -17.77% @ 5m, -2.83% @ 1h).
+2. **FALSIFIED**: Pure funder/smart-money parasite tracking (prone to sybil wash trading, copytraps, and negative OOS EV).
+3. **PROVEN (Active)**: First-Principles Four Pillars (Reserve $\ge \$3,000$, Unique Buyers $\ge 8$, $V/\text{Reserve} \ge 0.5$, Sizing \$100-\$250) producing net positive EV (+45% ~ +127%) with 0% instant rug rate.
+
+---
+
+## 2. Research Scope: Stay Narrow
+
+SmartAlpha focuses strictly on **Solana early-launch microstructural alpha**:
+
+1. **Liquidity Guard**: Reserve depth vs trade impact $\Delta P \approx \frac{S}{2L}$;
+2. **Orderflow Entropy**: Unique buyer dispersion vs single-wallet wash trading;
+3. **Turnover Velocity**: 180s/1h volume vs reserve ratio for escape velocity;
+4. **Friction Damping**: Dynamic price impact, DEX fee, and Gas deduction;
+5. **Execution Horizon**: Optimal 15m–60m laddered take-profit and momentum exits.
 
 Out of scope for V1 unless a result above creates a concrete reason to add them:
 
