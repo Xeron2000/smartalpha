@@ -59,3 +59,16 @@ def price_snapshot(mint: str) -> dict | None:
         "source": "dexscreener",
         "observed_at": int(time.time()),
     }
+
+
+def dex_pair_address(mint: str) -> str | None:
+    meta = get_pair_meta(mint)
+    return meta.get("pair_address") if meta else None
+
+
+def dex_token_outcome(mint: str) -> dict | None:
+    return get_pair_meta(mint)
+
+
+def dex_price_snapshot(mint: str) -> dict | None:
+    return price_snapshot(mint)

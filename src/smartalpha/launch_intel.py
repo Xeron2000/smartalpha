@@ -1,14 +1,56 @@
-from __future__ import annotations
-
+import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from smartalpha.config import Settings
-from smartalpha.funder import wallet_age_hours, wallet_age_hours_at
+from smartalpha.providers.dexscreener import dex_pair_address
 from smartalpha.rpc import SolanaRpc
 
-if TYPE_CHECKING:
-    from smartalpha.funder import HotFunder
+
+def wallet_age_hours(rpc: SolanaRpc, wallet: str, *, max_pages: int = 3) -> float | None:
+    """Age since oldest fetched signature."""
+    oldest: int | None = None
+    before: str | None = None
+    for _ in range(max_pages):
+        batch = rpc.get_signatures(wallet, before=before, limit=100)
+        if not batch:
+            break
+        for s in batch:
+            bt = s.get("blockTime")
+            if bt:
+                oldest = bt if oldest is None else min(oldest, bt)
+        before = batch[-1]["signature"]
+        if len(batch) < 100:
+            break
+    if oldest is None:
+        return None
+    return max(0.0, (time.time() - oldest) / 3600)
+
+
+def wallet_age_hours_at(
+    rpc: SolanaRpc, wallet: str, as_of_ts: int, *, max_pages: int = 5
+) -> tuple[float | None, bool]:
+    """Historical wallet age at as_of_ts."""
+    oldest: int | None = None
+    before: str | None = None
+    complete = True
+    for i in range(max_pages):
+        batch = rpc.get_signatures(wallet, before=before, limit=100)
+        if not batch:
+            break
+        for s in batch:
+            bt = s.get("blockTime")
+            if bt is None or bt > as_of_ts:
+                continue
+            oldest = bt if oldest is None else min(oldest, bt)
+        if len(batch) < 100:
+            complete = True
+            break
+        if i == max_pages - 1:
+            complete = False
+        before = batch[-1]["signature"]
+    if oldest is None:
+        return None, complete
+    return max(0.0, (as_of_ts - oldest) / 3600), complete
 
 
 @dataclass
@@ -47,16 +89,12 @@ def analyze_launch(
     pair_address: str | None = None,
     max_sigs: int = 40,
     settings: Settings | None = None,
-    hot_funders: dict[str, HotFunder] | None = None,
+    hot_funders: dict | None = None,
     as_of_ts: int | None = None,
     launch_ts: int | None = None,
 ) -> LaunchIntel:
     """Behavior-first: score early buyers by age/funder/bundle, not static watchlist.
     When as_of_ts is set, only transactions with launch_ts <= ts <= as_of_ts are considered (historical)."""
-    from smartalpha.funder import dex_pair_address, resolve_first_funder
-
-    settings_obj = settings or Settings()
-    hot = hot_funders if hot_funders is not None else {}
     pair = pair_address or dex_pair_address(mint)
     notes: list[str] = []
     if not pair:
@@ -161,16 +199,8 @@ def analyze_launch(
                 b.wallet_age_hours = age_res
         else:
             b.wallet_age_hours = wallet_age_hours(rpc, b.wallet)
-        if hot_funders is not None:
-            funder, _src = resolve_first_funder(rpc, b.wallet, settings_obj)
-            b.funder = funder
-            if b.funder:
-                funder_map[b.wallet] = b.funder
-                if b.funder in hot:
-                    b.funder_known = True
-
-    bundler_wallets = _detect_bundlers(buyers, funder_map if hot_funders is not None else {})
-    hot_hits = sorted({b.funder for b in buyers if b.funder and b.funder in hot}) if hot_funders is not None else []
+    bundler_wallets = _detect_bundlers(buyers, funder_map)
+    hot_hits: list[str] = []
 
     for b in buyers:
         _score_buyer(b, bundler_wallets)

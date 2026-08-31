@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from smartalpha.config import Settings
 from smartalpha.db import Store
-from smartalpha.funder import dex_price_snapshot
+from smartalpha.providers.dexscreener import dex_price_snapshot
 from smartalpha.signal_rules import (
     calculate_friction_net_gain,
     classify_signal,
