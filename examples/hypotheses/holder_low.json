@@ -1,8 +1,0 @@
-{
-  "name": "early_holder_concentration_low",
-  "description": "Early holder concentration low indicates organic distribution",
-  "features": ["top10_holder_rate", "hot_organic"],
-  "entry_rule": "top10_holder_rate < 0.4 and hot_organic >= 1",
-  "exit_rule": "fixed TP 100% SL 30%",
-  "falsification_condition": "win_rate < 0.4"
-}

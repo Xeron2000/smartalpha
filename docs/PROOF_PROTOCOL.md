@@ -76,11 +76,10 @@ uv run smartalpha prove  →  VERDICT: PROVEN
 uv run smartalpha prove data/oos_candidates.json --min-oos-signals 10
 ```
 
-## 当前入口契约
+## 与策略契约的边界
 
-- STRONG：pair、明确 launch timestamp、liquidity、Unique Buyers、买卖笔数、买家集中度、V5m/Reserve 全部通过。
-- MEDIUM/WATCH：仅观察，不允许自动下单。
-- funder/聪明钱字段只作 legacy 研究标签，不能绕过微观结构门禁。
+- 入口和出场规则唯一以 [`STRATEGY_SPEC.md`](STRATEGY_SPEC.md) 为准。
+- 本文只定义 OOS、Paper、摩擦和 `PROVEN` 裁决；funder/聪明钱只能作为历史研究标签。
 - Paper 证明使用 signal t0 → 300s；只有 `onchain_quote` 或 `signer_quote` 才能作为执行级证据。
 
 ### 注意

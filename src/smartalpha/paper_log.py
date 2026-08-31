@@ -110,13 +110,7 @@ async def schedule_paper_snapshots(
         for delay in list(pending):
             if now < signal_ts + delay:
                 continue
-            try:
-                fetch = snapshot_provider or (lambda _delay: get_pair_meta(mint))
-                snap = await asyncio.to_thread(fetch, delay)
-            except Exception:
-                snap = None
-            if snap:
-                _append_snapshot(store, mint, str(delay), snap)
+            await asyncio.to_thread(_record_snapshot, store, mint, delay, snapshot_provider)
             pending.discard(delay)
         if pending:
             next_due = min(signal_ts + d for d in pending)
@@ -146,13 +140,10 @@ def catch_up_paper_snapshots(
                 continue
             if now < signal_ts + delay:
                 continue
-            try:
-                snap = get_pair_meta(mint)
-            except Exception:
+            result = _record_snapshot(store, mint, delay)
+            if result is None:
                 errors += 1
-                continue
-            if snap:
-                _append_snapshot(store, mint, key, snap)
+            elif result:
                 updated += 1
     return {
         "updated": updated,
@@ -192,8 +183,20 @@ def paper_health(
     }
 
 
-def _append_snapshot(store: Store, mint: str, key: str, snap: dict) -> None:
-    store.merge_paper_snapshot(mint, key, snap)
+def _record_snapshot(
+    store: Store,
+    mint: str,
+    delay: int,
+    snapshot_provider: Callable[[int], dict | None] | None = None,
+) -> bool | None:
+    try:
+        snap = snapshot_provider(delay) if snapshot_provider else get_pair_meta(mint)
+    except Exception:
+        return None
+    if not snap:
+        return False
+    store.merge_paper_snapshot(mint, str(delay), snap)
+    return True
 
 
 def export_paper_csv(

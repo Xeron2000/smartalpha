@@ -6,12 +6,9 @@ Solana 早期开盘第一性原理 Alpha 测量与执行门。基于微观结构
 
 ---
 
-## 四大核心支柱 (The 4 Pillars)
+## 当前策略契约
 
-1. **流动性防线（代码默认 Reserve $\ge \$3,000$）**：硬性剔除 81% 薄底池即时 Rug 盘，进出冲击控制在 $\le 1.6\%$。
-2. **买方去重熵（Unique Buyers $\ge 8$）**：识破 Dev 单钱包对倒刷量，确保真实社区/Alpha 群扩散。
-3. **成交速度（$V_{5m} / \text{Reserve} \ge 0.5$）**：使用信号时可观测的 DexScreener 5 分钟成交量，捕捉早期资金注入速度。
-4. **摩擦力阻尼（固定 0.05 SOL & 最大滑点 $\le 5\%$）**：动态扣除双向冲击、DEX 费率与 Gas/Jito 成本。
+规则、阈值和共享出场策略唯一维护于 [`docs/STRATEGY_SPEC.md`](docs/STRATEGY_SPEC.md)；本文只保留运行方式。证明门禁见 [`docs/PROOF_PROTOCOL.md`](docs/PROOF_PROTOCOL.md)，外部 signer 边界见 [`docs/EXECUTION_CONTRACT.md`](docs/EXECUTION_CONTRACT.md)。
 
 ---
 
@@ -30,7 +27,7 @@ uv run smartalpha self-check
 ```text
 Helius WS (watch-launches)
        ↓
-四大支柱微观结构门禁 (Reserve >= $3k, Buyers >= 8, V5m/Res >= 0.5)
+四大支柱微观结构门禁 (Reserve >= $5k, Buyers >= 8, V5m/Res >= 0.5)
        ↓
 Paper / Shadow / Canary 执行门 (独立 signer，默认不广播)
        ↓

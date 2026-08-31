@@ -1,5 +1,5 @@
 from smartalpha.launch_intel import BuyerProfile, LaunchIntel
-from smartalpha.signal_rules import SignalLevel, classify_signal, liquidity_ok, should_follow_launch
+from smartalpha.signal_rules import SignalLevel, classify_signal, liquidity_ok
 
 
 def _intel(**kwargs) -> LaunchIntel:
@@ -34,11 +34,14 @@ def test_strong_requires_all_first_principles_gates():
         )
         == SignalLevel.STRONG
     )
-    assert should_follow_launch(
-        intel,
-        liquidity_usd=8000,
-        min_liquidity_usd=5000,
-        volume_usd=4000,
+    assert (
+        classify_signal(
+            intel,
+            liquidity_usd=8000,
+            min_liquidity_usd=5000,
+            volume_usd=4000,
+        )
+        == SignalLevel.STRONG
     )
 
 
@@ -55,7 +58,7 @@ def test_medium_is_observation_only():
         buyers=[BuyerProfile(f"w{i}", 1.0, i, f"s{i}") for i in range(3)]
     )
     assert classify_signal(intel, min_liquidity_usd=0) == SignalLevel.MEDIUM
-    assert not should_follow_launch(intel, min_liquidity_usd=0)
+    assert classify_signal(intel, min_liquidity_usd=0) != SignalLevel.STRONG
 
 
 def test_high_copytrap_skips():

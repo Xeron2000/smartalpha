@@ -1,8 +1,0 @@
-{
-  "name": "bundler_avoid",
-  "description": "Avoid bundler clustered launches",
-  "features": ["bundler_wallets", "copytrap_risk"],
-  "entry_rule": "bundler_wallets == 0 and copytrap_risk != 'high'",
-  "exit_rule": "scale_half",
-  "falsification_condition": "maxDD > 0.5"
-}

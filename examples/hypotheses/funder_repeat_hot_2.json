@@ -1,9 +1,0 @@
-{
-  "name": "funder_repeat_hot_2_organic",
-  "description": "Hot funder repeats with at least 2 organic buyers",
-  "features": ["hot_organic_buyers", "repeated_funder"],
-  "entry_rule": "hot_organic_buyers >= 2 and repeated_funder == true",
-  "exit_rule": "scale_half TP 100% SL 30%",
-  "filters": { "min_liquidity_usd": 5000 },
-  "falsification_condition": "EV <= 0 after 30 OOS"
-}

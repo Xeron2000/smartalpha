@@ -28,7 +28,7 @@ $$\text{Impact}_{\text{entry}} \approx \frac{S}{2(L_0 + S)}, \quad \text{Impact}
 [Helius WS 实时 Create Mint 流]
               │
               ▼
-    [支柱 1: 流动性安全线] ────(底池 Reserve < $3,000 立即拒绝)────> 拦截 81% 垃圾/即时 Rug
+    [支柱 1: 流动性安全线] ────(底池 Reserve < $5,000 立即拒绝)────> 拦截 81% 垃圾/即时 Rug
               │
               ▼
     [支柱 2: 真实买盘熵]   ────(买家数 < 8 或 买卖比 < 1.5 拒绝)────> 拦截 78% 庄家对倒刷量
@@ -44,7 +44,7 @@ $$\text{Impact}_{\text{entry}} \approx \frac{S}{2(L_0 + S)}, \quad \text{Impact}
 ```
 
 ### 支柱 1：流动性安全防线 (Liquidity Guard)
-- **硬性规则**：代码默认 $\text{Reserve}_{\text{USD}} \ge \$3,000$；示例 live 配置收紧为 $\ge \$5,000$（或按等值 SOL 配置）。
+- **硬性规则**：$\text{Reserve}_{\text{USD}} \ge \$5,000$（或按等值 SOL 配置）。
 - **原理**：将进出价格冲击硬性压制在单边 $\le 1.6\%$ 以内。实测直接消除 100% 的即时归零/抽池盘，将策略净 EV 从 -2.83% 逆转为 **+127.93%**。
 
 ### 支柱 2：买方订单流熵与反女巫 (Orderflow Entropy & Anti-Sybil)
@@ -89,7 +89,7 @@ $$\text{Impact}_{\text{entry}} \approx \frac{S}{2(L_0 + S)}, \quad \text{Impact}
 | 策略组件 | 对应 SmartAlpha 代码模块 | 具体改动与责任 |
 | :--- | :--- | :--- |
 | **实时开盘监听** | `src/smartalpha/launch_watch.py` | Helius WebSocket 监听 Create 事件，在有明确 launch timestamp 的前提下于 settle 后冻结信号时点特征。 |
-| **规则过滤引擎** | `src/smartalpha/signal_rules.py` | 增加 `LiquidityGuardRule`（底池 $\ge \$3\text{k}$）与 `EntropyDiffusionRule`（买家 $\ge 8$）。 |
+| **规则过滤引擎** | `src/smartalpha/signal_rules.py` | 固化流动性 $\ge \$5\text{k}$、买家 $\ge 8$、买卖比、V5m 和集中度门禁。 |
 | **防夹与陷阱检测** | `src/smartalpha/launch_intel.py` | 识别买家集中度、同槽位捆绑和 fresh-wallet copytrap。 |
 | **执行与持仓** | `src/smartalpha/execution.py` | Paper/Shadow/Canary 门禁、外部 signer 幂等下单、持仓状态、TP/SL/追踪退出。 |
 | **退出与卖压保护** | `src/smartalpha/execution.py` | Canary 以 signer 可成交报价执行固定止损、分段止盈和追踪退出。 |

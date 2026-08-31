@@ -369,31 +369,48 @@ class ExecutionEngine:
         except (OSError, TypeError, json.JSONDecodeError):
             return False
 
-    def _entry_intent(self, signal: Any, key: str, slippage_bps: int, amount_sol: float) -> dict[str, Any]:
+    def _intent(
+        self,
+        *,
+        side: str,
+        mint: str,
+        idempotency_key: str,
+        max_slippage_bps: int,
+        **fields: Any,
+    ) -> dict[str, Any]:
         return {
             "protocol": "smartalpha.execution.v1",
-            "idempotency_key": key,
+            "idempotency_key": idempotency_key,
             "venue": "pump_fun_or_pumpswap",
-            "side": "buy",
-            "mint": signal.mint,
-            "creator": signal.creator,
-            "quote_amount_sol": amount_sol,
-            "max_slippage_bps": slippage_bps,
-            "signal_ts": int(signal.ts),
-            "signal_price_usd": signal.price_usd,
-            "signal_liquidity_usd": signal.liquidity_usd,
+            "side": side,
+            "mint": mint,
+            "max_slippage_bps": max_slippage_bps,
+            **fields,
         }
 
+    def _entry_intent(self, signal: Any, key: str, slippage_bps: int, amount_sol: float) -> dict[str, Any]:
+        return self._intent(
+            side="buy",
+            mint=signal.mint,
+            idempotency_key=key,
+            max_slippage_bps=slippage_bps,
+            creator=signal.creator,
+            quote_amount_sol=amount_sol,
+            signal_ts=int(signal.ts),
+            signal_price_usd=signal.price_usd,
+            signal_liquidity_usd=signal.liquidity_usd,
+        )
+
     def _exit_intent(self, position: dict) -> dict[str, Any]:
-        return {
-            "protocol": "smartalpha.execution.v1",
-            "venue": "pump_fun_or_pumpswap",
-            "idempotency_key": _idempotency_key("quote-exit", position["mint"], position["updated_ts"]),
-            "side": "sell",
-            "mint": position["mint"],
-            "base_amount": float(position["token_amount"]),
-            "max_slippage_bps": _slippage_bps(self.settings.execution_max_slippage_pct),
-        }
+        return self._intent(
+            side="sell",
+            mint=position["mint"],
+            idempotency_key=_idempotency_key(
+                "quote-exit", position["mint"], position["updated_ts"]
+            ),
+            max_slippage_bps=_slippage_bps(self.settings.execution_max_slippage_pct),
+            base_amount=float(position["token_amount"]),
+        )
 
     def _exit_action(self, position: dict, return_pct: float, peak_pct: float) -> tuple[str, float] | None:
         return exit_action(
@@ -430,17 +447,15 @@ class ExecutionEngine:
             token_amount=sell_amount,
             slippage_bps=_slippage_bps(self.settings.execution_max_slippage_pct),
         )
-        intent = {
-            "protocol": "smartalpha.execution.v1",
-            "idempotency_key": key,
-            "venue": "pump_fun_or_pumpswap",
-            "side": "sell",
-            "mint": position["mint"],
-            "base_amount": sell_amount,
-            "max_slippage_bps": _slippage_bps(self.settings.execution_max_slippage_pct),
-            "quote": quote,
-            "reason": stage,
-        }
+        intent = self._intent(
+            side="sell",
+            mint=position["mint"],
+            idempotency_key=key,
+            max_slippage_bps=_slippage_bps(self.settings.execution_max_slippage_pct),
+            base_amount=sell_amount,
+            quote=quote,
+            reason=stage,
+        )
         try:
             response = self.signer.execute(intent) if self.signer else None
             if response is None:

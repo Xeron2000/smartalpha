@@ -1,8 +1,0 @@
-{
-  "name": "liquidity_momentum_1h",
-  "description": "Liquidity spike with 1h momentum",
-  "features": ["liquidity_usd", "gain_1h_pct"],
-  "entry_rule": "liquidity_usd > 10000 and gain_1h_pct > 20",
-  "exit_rule": "fixed TP 80% SL 25%",
-  "falsification_condition": "coverage < 0.8"
-}

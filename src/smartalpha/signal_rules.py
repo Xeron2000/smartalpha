@@ -111,7 +111,7 @@ def classify_signal(
     min_unique_buyers: int = 8,
     require_pair: bool = True,
     liquidity_usd: float | None = None,
-    min_liquidity_usd: float = 3000.0,
+    min_liquidity_usd: float = 5000.0,
     volume_usd: float | None = None,
     min_velocity: float = 0.5,
     min_buy_sell_ratio: float = 1.5,
@@ -168,40 +168,3 @@ def classify_signal(
     if n_unique >= 2:
         return SignalLevel.WATCH
     return SignalLevel.SKIP
-
-
-def should_follow_launch(
-    intel: LaunchIntel,
-    *,
-    min_unique_buyers: int = 8,
-    require_pair: bool = True,
-    liquidity_usd: float | None = None,
-    min_liquidity_usd: float = 3000.0,
-    volume_usd: float | None = None,
-    min_velocity: float = 0.5,
-    min_buy_sell_ratio: float = 1.5,
-    max_buyer_share: float = 0.15,
-    allow_unknown_liq: bool = False,
-    allow_unknown_velocity: bool = False,
-    pair_age_hours: float | None = None,
-    ignore_stale_low_liq: bool = False,
-) -> bool:
-    """Strict entry = STRONG only (all observable gates required)."""
-    return (
-        classify_signal(
-            intel,
-            min_unique_buyers=min_unique_buyers,
-            require_pair=require_pair,
-            liquidity_usd=liquidity_usd,
-            min_liquidity_usd=min_liquidity_usd,
-            volume_usd=volume_usd,
-            min_velocity=min_velocity,
-            min_buy_sell_ratio=min_buy_sell_ratio,
-            max_buyer_share=max_buyer_share,
-            allow_unknown_liq=allow_unknown_liq,
-            allow_unknown_velocity=allow_unknown_velocity,
-            pair_age_hours=pair_age_hours,
-            ignore_stale_low_liq=ignore_stale_low_liq,
-        )
-        == SignalLevel.STRONG
-    )

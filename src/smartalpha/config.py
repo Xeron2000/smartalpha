@@ -41,7 +41,7 @@ class Settings:
     signal_allow_unknown_liq: bool = _env("SIGNAL_ALLOW_UNKNOWN_LIQ", "0") in ("1", "true", "True", "yes")
 
     # First-Principles Strategy Invariants (STRATEGY_SPEC.md)
-    signal_min_liquidity_usd: float = float(_env("SIGNAL_MIN_LIQUIDITY_USD", "3000"))
+    signal_min_liquidity_usd: float = float(_env("SIGNAL_MIN_LIQUIDITY_USD", "5000"))
     signal_min_unique_buyers: int = int(_env("SIGNAL_MIN_UNIQUE_BUYERS", "8"))
     signal_min_buy_sell_ratio: float = float(_env("SIGNAL_MIN_BUY_SELL_RATIO", "1.5"))
     signal_max_buyer_share: float = float(_env("SIGNAL_MAX_BUYER_SHARE", "0.15"))

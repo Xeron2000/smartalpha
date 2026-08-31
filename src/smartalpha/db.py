@@ -5,6 +5,8 @@ import sqlite3
 import time
 from pathlib import Path
 
+_UNSET = object()
+
 
 class Store:
     def __init__(self, path: Path) -> None:
@@ -282,24 +284,38 @@ class Store:
             )
             return cur.rowcount > 0
 
-    def update_execution_order(self, idempotency_key: str, **fields: object) -> None:
-        allowed = {
-            "status",
-            "token_amount",
-            "tx_signature",
-            "realized_pnl_sol",
-            "response_json",
-            "error",
-        }
-        values = {k: v for k, v in fields.items() if k in allowed}
-        if not values:
+    def update_execution_order(
+        self,
+        idempotency_key: str,
+        *,
+        status: str | None | object = _UNSET,
+        token_amount: float | None | object = _UNSET,
+        tx_signature: str | None | object = _UNSET,
+        realized_pnl_sol: float | None | object = _UNSET,
+        response_json: str | None | object = _UNSET,
+        error: str | None | object = _UNSET,
+    ) -> None:
+        values: list[object] = []
+        setters: list[str] = []
+        for name, value in (
+            ("status", status),
+            ("token_amount", token_amount),
+            ("tx_signature", tx_signature),
+            ("realized_pnl_sol", realized_pnl_sol),
+            ("response_json", response_json),
+            ("error", error),
+        ):
+            if value is not _UNSET:
+                setters.append(f"{name} = ?")
+                values.append(value)
+        if not setters:
             return
-        values["updated_ts"] = int(time.time())
-        setters = ", ".join(f"{key} = ?" for key in values)
+        setters.append("updated_ts = ?")
+        values.extend((int(time.time()), idempotency_key))
         with self._conn() as c:
             c.execute(
-                f"UPDATE execution_orders SET {setters} WHERE idempotency_key = ?",
-                (*values.values(), idempotency_key),
+                f"UPDATE execution_orders SET {', '.join(setters)} WHERE idempotency_key = ?",
+                values,
             )
 
     def get_execution_order(self, idempotency_key: str) -> dict | None:
@@ -371,27 +387,40 @@ class Store:
                 ),
             )
 
-    def update_position(self, mint: str, **fields: object) -> None:
-        allowed = {
-            "status",
-            "token_amount",
-            "entry_sol",
-            "peak_return_pct",
-            "tp1_done",
-            "tp2_done",
-            "last_quote_ts",
-        }
-        values = {k: v for k, v in fields.items() if k in allowed}
-        if not values:
+    def update_position(
+        self,
+        mint: str,
+        *,
+        status: str | None | object = _UNSET,
+        token_amount: float | None | object = _UNSET,
+        entry_sol: float | None | object = _UNSET,
+        peak_return_pct: float | None | object = _UNSET,
+        tp1_done: bool | None | object = _UNSET,
+        tp2_done: bool | None | object = _UNSET,
+        last_quote_ts: int | None | object = _UNSET,
+    ) -> None:
+        values: list[object] = []
+        setters: list[str] = []
+        for name, value in (
+            ("status", status),
+            ("token_amount", token_amount),
+            ("entry_sol", entry_sol),
+            ("peak_return_pct", peak_return_pct),
+            ("tp1_done", tp1_done),
+            ("tp2_done", tp2_done),
+            ("last_quote_ts", last_quote_ts),
+        ):
+            if value is not _UNSET:
+                setters.append(f"{name} = ?")
+                values.append(value)
+        if not setters:
             return
-        values["updated_ts"] = int(time.time())
-        setters = ", ".join(
-            f"{key} = ?" for key in values
-        )
+        setters.append("updated_ts = ?")
+        values.extend((int(time.time()), mint))
         with self._conn() as c:
             c.execute(
-                f"UPDATE positions SET {setters} WHERE mint = ?",
-                (*values.values(), mint),
+                f"UPDATE positions SET {', '.join(setters)} WHERE mint = ?",
+                values,
             )
 
     def get_position(self, mint: str) -> dict | None:

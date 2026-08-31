@@ -14,7 +14,7 @@ from smartalpha.db import Store
 from smartalpha.exit_rules import exit_policy, simulate_exit
 from smartalpha.launch_intel import BuyerProfile, LaunchIntel
 from smartalpha.paper_log import paper_health
-from smartalpha.signal_rules import calculate_friction_net_gain, should_follow_launch
+from smartalpha.signal_rules import SignalLevel, calculate_friction_net_gain, classify_signal
 
 MIN_OOS_SIGNALS = 10
 MIN_PAPER_STRICT = 30
@@ -107,7 +107,7 @@ def run_prove(
         if missing:
             skipped.append(f"record[{index}]: missing {','.join(missing)}")
             continue
-        strict = should_follow_launch(
+        strict = classify_signal(
             intel,
             min_unique_buyers=s.signal_min_unique_buyers,
             min_liquidity_usd=s.signal_min_liquidity_usd,
@@ -118,7 +118,7 @@ def run_prove(
             max_buyer_share=s.signal_max_buyer_share,
             allow_unknown_liq=False,
             allow_unknown_velocity=False,
-        )
+        ) == SignalLevel.STRONG
         if not strict:
             continue
         signal_count += 1
