@@ -36,6 +36,60 @@ def high_confidence_buyers(intel: LaunchIntel, threshold: int = 30) -> list:
     ]
 
 
+def calculate_friction_net_gain(
+    gross_return: float,
+    reserve_usd: float | None,
+    trade_size_usd: float = 100.0,
+    gas_usd: float = 0.50,
+    fee_pct: float = 0.006,
+) -> float:
+    """First-principles net return after price impact, DEX fees, and fixed gas."""
+    if gross_return <= -1.0 or reserve_usd is None or reserve_usd <= 0:
+        return -1.0
+    impact_in = min(0.5, trade_size_usd / (2.0 * max(100.0, reserve_usd)))
+    dex_fee_half = fee_pct / 2.0
+    exit_reserve = max(10.0, reserve_usd * (1.0 + gross_return))
+    impact_out = min(0.5, trade_size_usd / (2.0 * exit_reserve))
+    gas_pct = gas_usd / max(1.0, trade_size_usd)
+
+    effective_entry = 1.0 + impact_in + dex_fee_half + gas_pct
+    gross_exit = max(0.0, 1.0 + gross_return)
+    effective_exit = gross_exit * (1.0 - impact_out - dex_fee_half) - gas_pct
+
+    net_return = (effective_exit / effective_entry) - 1.0
+    return max(-1.0, net_return)
+
+
+def entropy_and_buyers_ok(
+    intel: LaunchIntel,
+    min_unique_buyers: int = 8,
+    min_buy_sell_ratio: float = 1.5,
+) -> bool:
+    """Pillar 2: Check buyer dispersion & anti-sybil entropy."""
+    if not intel.buyers:
+        return False
+    unique_wallets = set(b.wallet for b in intel.buyers)
+    if len(unique_wallets) < min_unique_buyers:
+        return False
+    # If notes or buyer flags indicate extreme concentration
+    if intel.copytrap_risk == "high":
+        return False
+    return True
+
+
+def velocity_ok(
+    volume_usd: float | None,
+    liquidity_usd: float | None,
+    min_velocity: float = 0.5,
+) -> bool:
+    """Pillar 3: Turnover velocity = Volume / Reserve >= min_velocity."""
+    if min_velocity <= 0:
+        return True
+    if volume_usd is None or liquidity_usd is None or liquidity_usd <= 0:
+        return True
+    return (volume_usd / liquidity_usd) >= min_velocity
+
+
 def liquidity_ok(
     liquidity_usd: float | None,
     min_liquidity_usd: float,
@@ -45,19 +99,13 @@ def liquidity_ok(
     ignore_stale_low_liq: bool = False,
     stale_hours: float = 48.0,
 ) -> bool:
-    """Whether liquidity gate passes.
-
-    Live: unknown liq usually fails (allow_unknown=False).
-    Historical backtest: current liq on dumped charts is not entry liq —
-    ignore_stale_low_liq skips hard fail when pair is old and liq looks dead.
-    """
+    """Pillar 1: Liquidity Guard gate (Reserve >= min_liquidity_usd)."""
     if min_liquidity_usd <= 0:
         return True
     if liquidity_usd is None:
         return allow_unknown
     if liquidity_usd >= min_liquidity_usd:
         return True
-    # Below min: maybe ignore if chart is stale (post-dump residual)
     if (
         ignore_stale_low_liq
         and pair_age_hours is not None

@@ -10,6 +10,7 @@ from smartalpha.config import Settings
 from smartalpha.db import Store
 from smartalpha.funder import dex_price_snapshot
 from smartalpha.signal_rules import (
+    calculate_friction_net_gain,
     classify_signal,
     hot_organic_buyers,
     should_follow_launch,
@@ -246,7 +247,14 @@ def export_paper_csv(
         "price_t0_usd",
     ]
     for d in delays:
-        fieldnames.extend([f"gain_{d}s_pct", f"price_{d}s_usd", f"liq_{d}s_usd"])
+        fieldnames.extend(
+            [
+                f"gain_{d}s_pct",
+                f"gain_{d}s_net_pct",
+                f"price_{d}s_usd",
+                f"liq_{d}s_usd",
+            ]
+        )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
@@ -257,6 +265,7 @@ def export_paper_csv(
             p0 = row.get("price_usd")
             if p0 is None:
                 p0 = (snaps.get("0") or {}).get("price_usd")
+            row_liq = row.get("liquidity_usd")
             out: dict = {
                 "signal_ts": row["signal_ts"],
                 "mint": row["mint"],
@@ -264,17 +273,27 @@ def export_paper_csv(
                 "recommendation": row["recommendation"],
                 "copytrap_risk": row["copytrap_risk"],
                 "hot_organic_buyers": row["hot_organic_buyers"],
-                "liquidity_usd": row["liquidity_usd"],
+                "liquidity_usd": row_liq,
                 "price_t0_usd": p0,
             }
             for d in delays:
                 snap = snaps.get(str(d), {})
                 px = snap.get("price_usd")
-                # True delay tax: price change from signal t0, not Dex rolling m5/h1.
+                liq_d = snap.get("liquidity_usd") or row_liq
                 gain = None
+                net_gain = None
                 if p0 is not None and px is not None and float(p0) > 0:
-                    gain = round((float(px) / float(p0) - 1.0) * 100.0, 4)
+                    raw_ratio = float(px) / float(p0) - 1.0
+                    gain = round(raw_ratio * 100.0, 4)
+                    if liq_d is not None:
+                        net_ratio = calculate_friction_net_gain(
+                            raw_ratio,
+                            float(liq_d),
+                            trade_size_usd=getattr(s, "paper_trade_size_usd", 100.0),
+                        )
+                        net_gain = round(net_ratio * 100.0, 4)
                 out[f"gain_{d}s_pct"] = gain
+                out[f"gain_{d}s_net_pct"] = net_gain
                 out[f"price_{d}s_usd"] = px
                 out[f"liq_{d}s_usd"] = snap.get("liquidity_usd")
             w.writerow(out)

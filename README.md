@@ -86,6 +86,12 @@ systemctl --user enable --now smartalpha-watch smartalpha-paper-catchup
 
 **切勿**把 `.env` / `data/gmgn.cookie` 提交到 git。
 
-## 证明协议
+## 文档与证明协议
 
-`docs/PROOF_PROTOCOL.md`
+- 策略与产品规范（第一性原理）：[`docs/STRATEGY_SPEC.md`](docs/STRATEGY_SPEC.md)
+- 证明协议与验证门禁：[`docs/PROOF_PROTOCOL.md`](docs/PROOF_PROTOCOL.md)
+- 研发设计：[`docs/research-v1-design.md`](docs/research-v1-design.md)
+
+## License
+
+[MIT](LICENSE)
