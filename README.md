@@ -1,8 +1,15 @@
 # smartalpha
 
-Solana **pump.fun** 寄生聪明钱工具链：跨 mint 反推母钱包 → 实时 launch 监听 → paper 延迟税 → prove 裁决。
+Solana **早期开盘第一性原理 Alpha 测量与狙击引擎**：实时 launch 监听 → 四大支柱微观结构过滤（流动性防线 + 买方订单流熵 + 换手加速度 + 摩擦力阻尼） → 真实延迟快照与滑点扣除 → prove 裁决。
 
-> 无 Web 前后端。接口 = CLI 子命令；核心 = `src/smartalpha/*`；报告 JSON 字段见下方契约。
+> 无 Web 前后端。接口 = CLI 子命令；核心 = `src/smartalpha/*`；策略详细数学定义见 [`docs/STRATEGY_SPEC.md`](docs/STRATEGY_SPEC.md)。
+
+## 策略四大核心支柱 (The 4 Pillars)
+
+1. **流动性防线（Reserve $\ge \$3,000$）**：硬性剔除 81% 薄底池即时 Rug 盘，进出冲击控制在 $\le 1.6\%$。
+2. **买方去重熵（Unique Buyers $\ge 8$）**：识破 Dev 单钱包对倒刷量，确保真实社区/Alpha 群扩散。
+3. **换手加速度（$V_{180s} / \text{Reserve} \ge 0.5$）**：捕捉早期资金注入的“逃逸速度”。
+4. **摩擦力与仓位阻尼（\$100~\$250 & 滑点 $\le 10\%$）**：动态扣除双向冲击、DEX 费率与 Gas/Jito 成本。
 
 ## 安装
 
@@ -12,22 +19,19 @@ cp .env.example .env   # 填 HELIUS_API_KEY
 uv run smartalpha self-check
 ```
 
-可选：`uv sync --extra dev` 后跑测试 / ruff。
-
 ## 主流程（闭环）
 
 ```
-auto-discover  →  data/auto_discover.json  (candidates + recommended_funders + quality)
+watch-launches (Helius WS / RPC 实时监听新 Mint)
        ↓
-watch-launches →  paper_signals 表 + 延迟快照
+First-Principles Gate (底池 >= $3k & 买家 >= 8 & 换手 >= 0.5)
        ↓
-paper-log health / export
+paper_signals 表 (动态价格冲击 + 延迟快照 0/90/180/300/900s)
        ↓
-prove          →  PROVEN | PROMISING | INSUFFICIENT_DATA | FALSIFIED
+prove (样本外 OOS 统计检验 + 实盘 Paper 门禁) → PROVEN | FALSIFIED
 ```
 
 ```bash
-uv run smartalpha auto-discover --min-gain 200 --limit 30
 PYTHONUNBUFFERED=1 uv run smartalpha watch-launches
 uv run smartalpha paper-log catch-up
 uv run smartalpha paper-log health

@@ -1,7 +1,7 @@
 [project]
 name = "smartalpha"
-version = "0.1.0"
-description = "Solana pump.fun smart-money parasite: funder graph, launch watch, paper prove"
+version = "0.2.0"
+description = "Solana launch microstructure alpha & sniper engine: liquidity guard, orderflow entropy, turnover velocity, prove"
 readme = "README.md"
 authors = [{ name = "Xeron", email = "xeron2333@gmail.com" }]
 requires-python = ">=3.12"

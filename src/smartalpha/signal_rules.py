@@ -118,31 +118,31 @@ def liquidity_ok(
 def classify_signal(
     intel: LaunchIntel,
     *,
+    min_unique_buyers: int = 8,
     min_hot_buyers: int = 2,
     require_pair: bool = True,
     liquidity_usd: float | None = None,
-    min_liquidity_usd: float = 0,
+    min_liquidity_usd: float = 3000.0,
+    volume_usd: float | None = None,
+    min_velocity: float = 0.5,
     allow_unknown_liq: bool = False,
     pair_age_hours: float | None = None,
     ignore_stale_low_liq: bool = False,
 ) -> SignalLevel:
-    """Classify launch into 4 levels.
+    """Classify launch into 4 levels based purely on First-Principles Microstructure (STRATEGY_SPEC.md).
 
-    Funder-injected mode (session / walk-forward):
-      STRONG - ≥min_hot_buyers hot organic + not high copytrap + pair + liq OK
-      MEDIUM - ≥1 hot organic + pair (liq soft) OR follow_cohort + hot hit
-      WATCH  - hot funder hit but weak organic / liq
-      SKIP   - copytrap high or no hot signal
-
-    Behavior-only (no funder prelist):
-      STRONG - ≥1 high-confidence buyer + liq OK
-      MEDIUM - ≥1 high-confidence buyer
+    Pillar 1: Liquidity Guard (Reserve >= min_liquidity_usd, default $3,000)
+    Pillar 2: Orderflow Entropy (Unique Buyers >= min_unique_buyers, not single-sybil)
+    Pillar 3: Turnover Velocity (Volume / Reserve >= min_velocity)
+    Pillar 4: Copytrap & Anti-MEV Safety
     """
     if intel.copytrap_risk == "high":
         return SignalLevel.SKIP
 
-    organic = high_confidence_buyers(intel)
     pair_ok = not require_pair or not any("no dex pair" in n for n in intel.notes)
+    if not pair_ok:
+        return SignalLevel.SKIP
+
     liq_ok = liquidity_ok(
         liquidity_usd,
         min_liquidity_usd,
@@ -150,56 +150,58 @@ def classify_signal(
         pair_age_hours=pair_age_hours,
         ignore_stale_low_liq=ignore_stale_low_liq,
     )
+    vel_ok = velocity_ok(volume_usd, liquidity_usd, min_velocity=min_velocity)
 
-    # Funder-injected mode
+    # Buyer validation: True multi-buyer cohort (Unique buyers entropy or hot organic cohort)
+    unique_wallets = set(b.wallet for b in intel.buyers)
+    n_unique = len(unique_wallets)
+    hot_organic = hot_organic_buyers(intel)
+    organic = high_confidence_buyers(intel)
     if intel.funder_injected:
-        hot_organic = hot_organic_buyers(intel)
-        n_hot = len(hot_organic)
-        has_hot = bool(intel.hot_funder_hits) or n_hot > 0
+        has_cohort = (n_unique >= min_unique_buyers) or (len(hot_organic) >= min_hot_buyers)
+    else:
+        has_cohort = (n_unique >= min_unique_buyers) or (len(organic) >= 1)
 
-        if not has_hot or not pair_ok:
-            return SignalLevel.SKIP
-
-        # STRONG: real cohort of hot-funded organic buyers + liq
-        if n_hot >= min_hot_buyers and liq_ok:
-            return SignalLevel.STRONG
-
-        # MEDIUM: at least one hot organic, or follow_cohort with hot hit
-        if n_hot >= 1:
-            return SignalLevel.MEDIUM
-        if intel.recommendation == "follow_cohort" and has_hot:
-            return SignalLevel.MEDIUM
-        if has_hot:
-            return SignalLevel.WATCH
-        return SignalLevel.SKIP
-
-    # Behavior-only
-    if len(organic) >= 1 and pair_ok and liq_ok:
+    # STRONG: Full First-Principles Pass
+    if liq_ok and has_cohort and vel_ok:
         return SignalLevel.STRONG
-    if len(organic) >= 1:
+
+    # MEDIUM: Partial dispersion with acceptable liquidity
+    if liq_ok and (n_unique >= 3 or len(hot_organic) >= 1 or len(organic) >= 1):
         return SignalLevel.MEDIUM
+
+    # WATCH: Active flow but incomplete liquidity or small buyer set
+    if n_unique >= 2 or len(hot_organic) >= 1:
+        return SignalLevel.WATCH
+
     return SignalLevel.SKIP
 
 
 def should_follow_launch(
     intel: LaunchIntel,
     *,
+    min_unique_buyers: int = 8,
     min_hot_buyers: int = 2,
     require_pair: bool = True,
     liquidity_usd: float | None = None,
-    min_liquidity_usd: float = 0,
+    min_liquidity_usd: float = 3000.0,
+    volume_usd: float | None = None,
+    min_velocity: float = 0.5,
     allow_unknown_liq: bool = False,
     pair_age_hours: float | None = None,
     ignore_stale_low_liq: bool = False,
 ) -> bool:
-    """Strict entry = STRONG only."""
+    """Strict entry = STRONG only (Pillars 1, 2, 3, 4)."""
     return (
         classify_signal(
             intel,
+            min_unique_buyers=min_unique_buyers,
             min_hot_buyers=min_hot_buyers,
             require_pair=require_pair,
             liquidity_usd=liquidity_usd,
             min_liquidity_usd=min_liquidity_usd,
+            volume_usd=volume_usd,
+            min_velocity=min_velocity,
             allow_unknown_liq=allow_unknown_liq,
             pair_age_hours=pair_age_hours,
             ignore_stale_low_liq=ignore_stale_low_liq,
@@ -209,28 +211,34 @@ def should_follow_launch(
 
 
 def should_follow_launch_legacy(intel: LaunchIntel) -> bool:
+    """Legacy loose check (deprecated)."""
     if intel.copytrap_risk == "high":
         return False
-    # Loose: any hot funder hit (rec may be skip under new scoring)
-    return bool(intel.hot_funder_hits)
+    return bool(intel.hot_funder_hits) or len(intel.buyers) >= 3
 
 
 def should_follow_launch_balanced(
     intel: LaunchIntel,
     *,
+    min_unique_buyers: int = 8,
     min_hot_buyers: int = 2,
     liquidity_usd: float | None = None,
-    min_liquidity_usd: float = 0,
+    min_liquidity_usd: float = 3000.0,
+    volume_usd: float | None = None,
+    min_velocity: float = 0.5,
     allow_unknown_liq: bool = False,
     pair_age_hours: float | None = None,
     ignore_stale_low_liq: bool = False,
 ) -> bool:
-    """STRONG or MEDIUM."""
+    """STRONG or MEDIUM entry."""
     level = classify_signal(
         intel,
+        min_unique_buyers=min_unique_buyers,
         min_hot_buyers=min_hot_buyers,
         liquidity_usd=liquidity_usd,
         min_liquidity_usd=min_liquidity_usd,
+        volume_usd=volume_usd,
+        min_velocity=min_velocity,
         allow_unknown_liq=allow_unknown_liq,
         pair_age_hours=pair_age_hours,
         ignore_stale_low_liq=ignore_stale_low_liq,
