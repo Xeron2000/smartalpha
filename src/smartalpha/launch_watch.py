@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 
 from smartalpha.config import Settings
 from smartalpha.db import Store
-from smartalpha.exit_rules import exit_params
 from smartalpha.launch_intel import analyze_launch
 from smartalpha.providers.dexscreener import dex_pair_address, dex_token_outcome
 from smartalpha.pump import PUMP_PROGRAM, parse_pump_create_tx
@@ -74,10 +73,8 @@ def process_new_mint(
         except Exception:
             liq = None
 
-        ep = exit_params(s)
         notes.append(
-            f"exit: scale half@{ep.scale_half_pct:.0f}% | "
-            f"runner trail +{ep.trail_activate_pct:.0f}%/-{ep.trail_drawdown_pct:.0f}%"
+            f"exit plan: {s.exit_mode} (TP=+{s.backtest_tp_pct:.0f}% full exit | SL=-{s.backtest_sl_pct:.0f}%)"
         )
         if s.signal_min_liquidity_usd > 0:
             notes.append(

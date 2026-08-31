@@ -45,8 +45,9 @@ class Settings:
     signal_min_hot_buyers: int = int(_env("SIGNAL_MIN_HOT_BUYERS", "2"))
     signal_allow_unknown_liq: bool = _env("SIGNAL_ALLOW_UNKNOWN_LIQ", "0") in ("1", "true", "True", "yes")
 
-    # Exit simulation parameters
-    backtest_tp_pct: float = float(_env("BACKTEST_TP_PCT", "100"))
+    # Exit strategy parameters
+    exit_mode: str = _env("EXIT_MODE", "fixed")  # fixed (+80% full TP) | scale (50% @ 2x + trail)
+    backtest_tp_pct: float = float(_env("BACKTEST_TP_PCT", "80"))
     backtest_sl_pct: float = float(_env("BACKTEST_SL_PCT", "30"))
     backtest_hard_tp_pct: float = float(_env("BACKTEST_HARD_TP_PCT", "120"))
     backtest_trail_activate_pct: float = float(_env("BACKTEST_TRAIL_ACTIVATE_PCT", "50"))
