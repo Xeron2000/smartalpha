@@ -2,55 +2,40 @@ import time
 from dataclasses import dataclass, field
 
 from smartalpha.config import Settings
-from smartalpha.providers.dexscreener import dex_pair_address
+from smartalpha.providers.dexscreener import get_pair_meta
 from smartalpha.rpc import SolanaRpc
 
 
-def wallet_age_hours(rpc: SolanaRpc, wallet: str, *, max_pages: int = 3) -> float | None:
-    """Age since oldest fetched signature."""
-    oldest: int | None = None
-    before: str | None = None
-    for _ in range(max_pages):
-        batch = rpc.get_signatures(wallet, before=before, limit=100)
-        if not batch:
-            break
-        for s in batch:
-            bt = s.get("blockTime")
-            if bt:
-                oldest = bt if oldest is None else min(oldest, bt)
-        before = batch[-1]["signature"]
-        if len(batch) < 100:
-            break
-    if oldest is None:
-        return None
-    return max(0.0, (time.time() - oldest) / 3600)
-
-
-def wallet_age_hours_at(
-    rpc: SolanaRpc, wallet: str, as_of_ts: int, *, max_pages: int = 5
+def wallet_age_hours(
+    rpc: SolanaRpc,
+    wallet: str,
+    *,
+    as_of_ts: int | None = None,
+    max_pages: int | None = None,
 ) -> tuple[float | None, bool]:
-    """Historical wallet age at as_of_ts."""
+    """Return wallet age and whether the fetched history is complete."""
+    cutoff = as_of_ts or int(time.time())
+    pages = max_pages if max_pages is not None else (5 if as_of_ts is not None else 3)
     oldest: int | None = None
     before: str | None = None
     complete = True
-    for i in range(max_pages):
+    for index in range(pages):
         batch = rpc.get_signatures(wallet, before=before, limit=100)
         if not batch:
             break
-        for s in batch:
-            bt = s.get("blockTime")
-            if bt is None or bt > as_of_ts:
+        for signature in batch:
+            block_time = signature.get("blockTime")
+            if block_time is None or block_time > cutoff:
                 continue
-            oldest = bt if oldest is None else min(oldest, bt)
+            oldest = block_time if oldest is None else min(oldest, block_time)
         if len(batch) < 100:
-            complete = True
             break
-        if i == max_pages - 1:
+        if index == pages - 1:
             complete = False
         before = batch[-1]["signature"]
     if oldest is None:
         return None, complete
-    return max(0.0, (as_of_ts - oldest) / 3600), complete
+    return max(0.0, (cutoff - oldest) / 3600), complete
 
 
 @dataclass
@@ -61,10 +46,6 @@ class BuyerProfile:
     signature: str
     slot: int | None = None
     wallet_age_hours: float | None = None
-    funder: str | None = None
-    funder_known: bool = False
-    flags: list[str] = field(default_factory=list)
-    follow_score: float = 0.0
 
 
 @dataclass
@@ -72,10 +53,12 @@ class LaunchIntel:
     mint: str
     buyers: list[BuyerProfile]
     bundler_wallets: list[str]
-    hot_funder_hits: list[str]
     copytrap_risk: str
     recommendation: str
-    funder_injected: bool = False
+    buy_count: int = 0
+    sell_count: int = 0
+    volume_sol: float = 0.0
+    top_buyer_share: float = 0.0
     notes: list[str] = field(default_factory=list)
     window_complete: bool = True
     as_of_ts: int | None = None
@@ -89,18 +72,24 @@ def analyze_launch(
     pair_address: str | None = None,
     max_sigs: int = 40,
     settings: Settings | None = None,
-    hot_funders: dict | None = None,
     as_of_ts: int | None = None,
     launch_ts: int | None = None,
 ) -> LaunchIntel:
-    """Behavior-first: score early buyers by age/funder/bundle, not static watchlist.
-    When as_of_ts is set, only transactions with launch_ts <= ts <= as_of_ts are considered (historical)."""
-    pair = pair_address or dex_pair_address(mint)
+    """Build outcome-blind launch features from the bounded observation window.
+
+    The returned features are bounded by ``launch_ts`` and ``as_of_ts``;
+    missing launch timestamps are handled by the caller as non-entry data.
+    """
+    pair = pair_address or ((get_pair_meta(mint) or {}).get("pair_address"))
     notes: list[str] = []
     if not pair:
         notes.append("no dex pair yet — pre-graduation mint needs gRPC launch feed")
 
     raw_buys: list[BuyerProfile] = []
+    buy_count = 0
+    sell_count = 0
+    volume_sol = 0.0
+    buy_volume_by_wallet: dict[str, float] = {}
     window_complete = True
     if pair:
         # Paginated retrieval to cover launch..as_of window, not just latest 40
@@ -163,16 +152,24 @@ def analyze_launch(
             elif as_of_ts is not None:
                 if ts > as_of_ts:
                     continue
-            for ev in _extract_mint_buys(tx, mint):
-                raw_buys.append(
-                    BuyerProfile(
-                        wallet=ev["wallet"],
-                        buy_sol=ev["sol"],
-                        ts=ts,
-                        signature=sig_entry["signature"],
-                        slot=slot,
+            for ev in _extract_mint_flows(tx, mint):
+                volume_sol += ev["sol"]
+                if ev["side"] == "buy":
+                    buy_count += 1
+                    buy_volume_by_wallet[ev["wallet"]] = (
+                        buy_volume_by_wallet.get(ev["wallet"], 0.0) + ev["sol"]
                     )
-                )
+                    raw_buys.append(
+                        BuyerProfile(
+                            wallet=ev["wallet"],
+                            buy_sol=ev["sol"],
+                            ts=ts,
+                            signature=sig_entry["signature"],
+                            slot=slot,
+                        )
+                    )
+                else:
+                    sell_count += 1
         # if pagination cap hit and we didn't get full window, mark incomplete
         if not window_complete:
             notes.append("HISTORICAL_INCOMPLETE: pair signatures not fully backfilled to launch")
@@ -183,39 +180,34 @@ def analyze_launch(
         if b.wallet not in first:
             first[b.wallet] = b
     buyers = list(first.values())
+    total_buy_volume = sum(buy_volume_by_wallet.values())
+    top_buyer_share = (
+        max(buy_volume_by_wallet.values(), default=0.0) / total_buy_volume
+        if total_buy_volume > 0
+        else 0.0
+    )
 
-    # enrich + score (historical wallet age when as_of_ts set)
-    funder_map: dict[str, str | None] = {}
+    # Enrich with wallet age at the observation timestamp.
     for b in buyers:
-        if as_of_ts is not None:
-            age_res = wallet_age_hours_at(rpc, b.wallet, as_of_ts)
-            if isinstance(age_res, tuple):
-                age, complete = age_res
-                # incomplete age cannot be trusted as fresh
-                b.wallet_age_hours = age if complete else None
-                if not complete:
-                    notes.append(f"wallet {b.wallet[:6]} age incomplete")
-            else:
-                b.wallet_age_hours = age_res
-        else:
-            b.wallet_age_hours = wallet_age_hours(rpc, b.wallet)
-    bundler_wallets = _detect_bundlers(buyers, funder_map)
-    hot_hits: list[str] = []
-
-    for b in buyers:
-        _score_buyer(b, bundler_wallets)
-
-    copytrap = _copytrap_level(buyers, hot_funders is not None)
-    rec = _recommendation(buyers, bundler_wallets, hot_hits)
+        age, complete = wallet_age_hours(rpc, b.wallet, as_of_ts=as_of_ts)
+        # Incomplete history cannot be trusted as a fresh-wallet signal.
+        b.wallet_age_hours = age if as_of_ts is None or complete else None
+        if as_of_ts is not None and not complete:
+            notes.append(f"wallet {b.wallet[:6]} age incomplete")
+    bundler_wallets = _detect_bundlers(buyers)
+    copytrap = _copytrap_level(buyers, bundler_wallets)
+    rec = _recommendation(buyers, bundler_wallets)
 
     return LaunchIntel(
         mint=mint,
-        buyers=sorted(buyers, key=lambda x: -x.follow_score),
+        buyers=sorted(buyers, key=lambda x: -x.buy_sol),
         bundler_wallets=bundler_wallets,
-        hot_funder_hits=hot_hits,
         copytrap_risk=copytrap,
         recommendation=rec,
-        funder_injected=hot_funders is not None,
+        buy_count=buy_count,
+        sell_count=sell_count,
+        volume_sol=volume_sol,
+        top_buyer_share=top_buyer_share,
         notes=notes,
         window_complete=window_complete,
         as_of_ts=as_of_ts,
@@ -223,7 +215,7 @@ def analyze_launch(
     )
 
 
-def _extract_mint_buys(tx: dict, mint: str) -> list[dict]:
+def _extract_mint_flows(tx: dict, mint: str) -> list[dict]:
     meta = tx.get("meta") or {}
     pre: dict[tuple[str, str], float] = {}
     post: dict[tuple[str, str], float] = {}
@@ -235,19 +227,17 @@ def _extract_mint_buys(tx: dict, mint: str) -> list[dict]:
             if not owner:
                 continue
             ui = (b.get("uiTokenAmount") or {}).get("uiAmount") or 0
-            key = (owner, mint)
-            bag[key] = float(ui)
+            bag[(owner, mint)] = float(ui)
 
     out: list[dict] = []
-    keys = set(pre) | set(post)
-    for key in keys:
+    for key in set(pre) | set(post):
         delta = post.get(key, 0) - pre.get(key, 0)
-        if delta <= 0:
+        if delta == 0:
             continue
         owner = key[0]
-        # rough SOL proxy from native balance change
-        sol = _native_delta(tx, owner)
-        out.append({"wallet": owner, "sol": max(abs(sol), 0.01)})
+        # ponytail: native balance delta is a coarse volume proxy; exact DEX event decoding belongs in the provider.
+        sol = max(abs(_native_delta(tx, owner)), 0.01)
+        out.append({"wallet": owner, "sol": sol, "side": "buy" if delta > 0 else "sell"})
     return out
 
 
@@ -264,67 +254,27 @@ def _native_delta(tx: dict, wallet: str) -> float:
         return 0.0
 
 
-def _detect_bundlers(buyers: list[BuyerProfile], funder_map: dict[str, str | None]) -> list[str]:
-    """Same slot + shared funder = bundler cluster."""
-    by_slot_funder: dict[tuple[int | None, str], list[str]] = {}
-    for b in buyers:
-        if b.funder:
-            key = (b.slot, b.funder)
-            by_slot_funder.setdefault(key, []).append(b.wallet)
-    flagged: set[str] = set()
-    for (_slot, _f), ws in by_slot_funder.items():
-        if len(ws) >= 3:
-            flagged.update(ws)
+def _detect_bundlers(buyers: list[BuyerProfile]) -> list[str]:
+    """Flag cohorts that land in the same slot."""
+    by_slot: dict[int, list[str]] = {}
+    for buyer in buyers:
+        if buyer.slot is not None:
+            by_slot.setdefault(buyer.slot, []).append(buyer.wallet)
+    flagged = {wallet for wallets in by_slot.values() if len(wallets) >= 3 for wallet in wallets}
     return sorted(flagged)
 
 
-def _score_buyer(b: BuyerProfile, bundlers: list[str]) -> None:
-    score = 0.0
-    if b.wallet in bundlers:
-        b.flags.append("bundler_cluster")
-        b.follow_score = 0.0
-        return
-
-    if b.funder_known and b.funder:
-        score += 40
-        b.flags.append("hot_funder")
-
-    if b.wallet_age_hours is not None:
-        if b.wallet_age_hours < 2:
-            b.flags.append("fresh_wallet")
-            # ponytail: fresh alone is weak signal, not rewarded
-        elif b.wallet_age_hours > 48:
-            score += 20
-            b.flags.append("aged_wallet")
-
-    if b.buy_sol >= 0.5:
-        score += 15
-        b.flags.append("meaningful_size")
-
-    b.follow_score = min(score, 100.0)
-
-
-def _copytrap_level(buyers: list[BuyerProfile], has_hot_funders: bool) -> str:
-    bundlers = [b for b in buyers if "bundler_cluster" in b.flags]
-    if len(bundlers) >= 3:
+def _copytrap_level(buyers: list[BuyerProfile], bundler_wallets: list[str]) -> str:
+    if len(bundler_wallets) >= 3:
         return "high"
-    fresh = [b for b in buyers if b.wallet_age_hours is not None and b.wallet_age_hours < 1]
+    fresh = [buyer for buyer in buyers if buyer.wallet_age_hours is not None and buyer.wallet_age_hours < 1]
     if len(buyers) == 1 and fresh:
         return "high"
-    if len(fresh) >= 4 and not has_hot_funders:
+    if len(fresh) >= 4:
         return "medium"
     return "low"
 
 
-def _recommendation(
-    buyers: list[BuyerProfile],
-    bundlers: list[str],
-    hot_hits: list[str],
-) -> str:
-    organic = [b for b in buyers if b.follow_score >= 30 and b.wallet not in bundlers]
-    if hot_hits and len(organic) >= 2:
-        return "follow_cohort"
-    # behavior-only mode: 1 high-confidence buyer is enough
-    if len(organic) >= 1:
-        return "follow_cohort"
-    return "skip"
+def _recommendation(buyers: list[BuyerProfile], bundlers: list[str]) -> str:
+    organic = {buyer.wallet for buyer in buyers} - set(bundlers)
+    return "follow_flow" if len(organic) >= 3 else "observe"

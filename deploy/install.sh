@@ -29,7 +29,7 @@ uv sync
 mkdir -p data/logs
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "==> created .env from example — fill HELIUS_API_KEY (and optional GMGN cookie)"
+  echo "==> created .env from example — fill HELIUS_API_KEY"
 fi
 
 echo "==> self-check"
@@ -37,7 +37,5 @@ uv run smartalpha self-check
 
 echo "==> done. Next:"
 echo "  1) edit $INSTALL_DIR/.env"
-echo "  2) optional: uv run smartalpha gmgn-cookie import '...'"
-echo "  3) uv run smartalpha auto-discover --min-gain 200 --limit 30"
-echo "  4) systemd: see deploy/smartalpha-watch.service"
+echo "  2) systemd: see deploy/smartalpha-watch.service"
 echo "     or: PYTHONUNBUFFERED=1 uv run smartalpha watch-launches >> data/logs/watch_launches.log 2>&1"

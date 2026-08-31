@@ -1,4 +1,3 @@
-import json
 import time
 from pathlib import Path
 
@@ -12,7 +11,6 @@ def test_seen_mints_and_paper_upsert(tmp_path: Path):
     assert store.try_seen_mint("mintA", "sig1", "creator") is True
     assert store.try_seen_mint("mintA", "sig2", "creator") is False
     store.mark_seen_mint_done("mintA")
-    assert store.is_mint_seen("mintA") is True
 
     now = int(time.time())
     store.upsert_paper_signal(
@@ -22,8 +20,6 @@ def test_seen_mints_and_paper_upsert(tmp_path: Path):
         signature="s",
         recommendation="follow_cohort",
         copytrap_risk="low",
-        hot_organic_buyers=2,
-        hot_funders=["f1"],
         liquidity_usd=6000.0,
         strict_signal=True,
         price_usd=1e-6,
@@ -36,7 +32,7 @@ def test_seen_mints_and_paper_upsert(tmp_path: Path):
     rows = store.list_paper_signals(limit=10)
     assert len(rows) == 1
     assert rows[0]["strict_signal"] in (1, True)
-    assert json.loads(rows[0]["hot_funders_json"]) == ["f1"]
+    assert rows[0]["top_buyer_share"] == 0.0
 
     health = paper_health(store=store)
     assert health["paper_rows"] == 1
@@ -57,8 +53,6 @@ def test_export_paper_gain_from_t0(tmp_path: Path):
         signature="",
         recommendation="skip",
         copytrap_risk="low",
-        hot_organic_buyers=0,
-        hot_funders=[],
         liquidity_usd=None,
         strict_signal=False,
         price_usd=1.0,

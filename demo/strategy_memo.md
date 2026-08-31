@@ -1,5 +1,6 @@
-# smartalpha 寄生策略备忘录
+# smartalpha 历史寄生策略备忘录（Legacy）
 
+> 本文件只记录已被否定/待复核的 funder 跟单实验，不是当前 live 入口契约。当前 live 规则以 [`docs/STRATEGY_SPEC.md`](../docs/STRATEGY_SPEC.md) 为准：流动性、订单流、成交速度和摩擦成本；funder 仅作研究标签。
 > 供外部评审（ChatGPT DevSpace / 人工）。不含密钥；地址为公开链上数据。
 > 生成日期：2026-07-04
 

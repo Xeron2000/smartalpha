@@ -16,26 +16,6 @@ class SignalLevel(StrEnum):
     SKIP = "skip"
 
 
-def hot_organic_buyers(intel: LaunchIntel) -> list:
-    """Buyers funded by known hot funder, not flagged as bundler."""
-    bundlers = set(intel.bundler_wallets)
-    return [
-        b
-        for b in intel.buyers
-        if b.funder_known and b.wallet not in bundlers
-    ]
-
-
-def high_confidence_buyers(intel: LaunchIntel, threshold: int = 30) -> list:
-    """Buyers with follow_score >= threshold, not bundlers."""
-    bundlers = set(intel.bundler_wallets)
-    return [
-        b
-        for b in intel.buyers
-        if b.follow_score >= threshold and b.wallet not in bundlers
-    ]
-
-
 def calculate_friction_net_gain(
     gross_return: float,
     reserve_usd: float | None,
@@ -64,15 +44,23 @@ def entropy_and_buyers_ok(
     intel: LaunchIntel,
     min_unique_buyers: int = 8,
     min_buy_sell_ratio: float = 1.5,
+    max_buyer_share: float = 0.15,
 ) -> bool:
-    """Pillar 2: Check buyer dispersion & anti-sybil entropy."""
+    """Pillar 2: Check unique buyers, buy/sell flow, and copytrap risk."""
     if not intel.buyers:
         return False
     unique_wallets = set(b.wallet for b in intel.buyers)
     if len(unique_wallets) < min_unique_buyers:
         return False
-    # If notes or buyer flags indicate extreme concentration
     if intel.copytrap_risk == "high":
+        return False
+    if max_buyer_share > 0 and intel.top_buyer_share >= max_buyer_share:
+        return False
+
+    # Older callers only supplied deduplicated buyers, so use that as a safe fallback.
+    buys = intel.buy_count or len(intel.buyers)
+    sells = intel.sell_count
+    if buys / max(1, sells) < min_buy_sell_ratio:
         return False
     return True
 
@@ -81,12 +69,14 @@ def velocity_ok(
     volume_usd: float | None,
     liquidity_usd: float | None,
     min_velocity: float = 0.5,
+    *,
+    allow_unknown: bool = False,
 ) -> bool:
-    """Pillar 3: Turnover velocity = Volume / Reserve >= min_velocity."""
+    """Pillar 3: Turnover velocity = observed volume / reserve."""
     if min_velocity <= 0:
         return True
     if volume_usd is None or liquidity_usd is None or liquidity_usd <= 0:
-        return True
+        return allow_unknown
     return (volume_usd / liquidity_usd) >= min_velocity
 
 
@@ -119,24 +109,26 @@ def classify_signal(
     intel: LaunchIntel,
     *,
     min_unique_buyers: int = 8,
-    min_hot_buyers: int = 2,
     require_pair: bool = True,
     liquidity_usd: float | None = None,
     min_liquidity_usd: float = 3000.0,
     volume_usd: float | None = None,
     min_velocity: float = 0.5,
+    min_buy_sell_ratio: float = 1.5,
+    max_buyer_share: float = 0.15,
     allow_unknown_liq: bool = False,
+    allow_unknown_velocity: bool = False,
     pair_age_hours: float | None = None,
     ignore_stale_low_liq: bool = False,
 ) -> SignalLevel:
-    """Classify launch into 4 levels based purely on First-Principles Microstructure (STRATEGY_SPEC.md).
+    """Classify a launch using observable microstructure only.
 
-    Pillar 1: Liquidity Guard (Reserve >= min_liquidity_usd, default $3,000)
-    Pillar 2: Orderflow Entropy (Unique Buyers >= min_unique_buyers, not single-sybil)
-    Pillar 3: Turnover Velocity (Volume / Reserve >= min_velocity)
-    Pillar 4: Copytrap & Anti-MEV Safety
+    STRONG is a hard entry gate. Funder labels can annotate a launch but cannot
+    replace unique-buyer, buy/sell, liquidity, or volume gates.
     """
     if intel.copytrap_risk == "high":
+        return SignalLevel.SKIP
+    if any("strict disabled" in note for note in intel.notes):
         return SignalLevel.SKIP
 
     pair_ok = not require_pair or not any("no dex pair" in n for n in intel.notes)
@@ -150,30 +142,31 @@ def classify_signal(
         pair_age_hours=pair_age_hours,
         ignore_stale_low_liq=ignore_stale_low_liq,
     )
-    vel_ok = velocity_ok(volume_usd, liquidity_usd, min_velocity=min_velocity)
+    vel_ok = velocity_ok(
+        volume_usd,
+        liquidity_usd,
+        min_velocity=min_velocity,
+        allow_unknown=allow_unknown_velocity,
+    )
 
-    # Buyer validation: True multi-buyer cohort (Unique buyers entropy or hot organic cohort)
-    unique_wallets = set(b.wallet for b in intel.buyers)
+    unique_wallets = {b.wallet for b in intel.buyers}
     n_unique = len(unique_wallets)
-    hot_organic = hot_organic_buyers(intel)
-    organic = high_confidence_buyers(intel)
-    if intel.funder_injected:
-        has_cohort = (n_unique >= min_unique_buyers) or (len(hot_organic) >= min_hot_buyers)
-    else:
-        has_cohort = (n_unique >= min_unique_buyers) or (len(organic) >= 1)
+    entropy_ok = entropy_and_buyers_ok(
+        intel,
+        min_unique_buyers=min_unique_buyers,
+        min_buy_sell_ratio=min_buy_sell_ratio,
+        max_buyer_share=max_buyer_share,
+    )
 
-    # STRONG: Full First-Principles Pass
-    if liq_ok and has_cohort and vel_ok:
+    # STRONG: all four first-principles gates pass.
+    if liq_ok and entropy_ok and vel_ok:
         return SignalLevel.STRONG
 
-    # MEDIUM: Partial dispersion with acceptable liquidity
-    if liq_ok and (n_unique >= 3 or len(hot_organic) >= 1 or len(organic) >= 1):
+    # MEDIUM/WATCH are observation states, never strict entry permission.
+    if liq_ok and n_unique >= 3:
         return SignalLevel.MEDIUM
-
-    # WATCH: Active flow but incomplete liquidity or small buyer set
-    if n_unique >= 2 or len(hot_organic) >= 1:
+    if n_unique >= 2:
         return SignalLevel.WATCH
-
     return SignalLevel.SKIP
 
 
@@ -181,66 +174,34 @@ def should_follow_launch(
     intel: LaunchIntel,
     *,
     min_unique_buyers: int = 8,
-    min_hot_buyers: int = 2,
     require_pair: bool = True,
     liquidity_usd: float | None = None,
     min_liquidity_usd: float = 3000.0,
     volume_usd: float | None = None,
     min_velocity: float = 0.5,
+    min_buy_sell_ratio: float = 1.5,
+    max_buyer_share: float = 0.15,
     allow_unknown_liq: bool = False,
+    allow_unknown_velocity: bool = False,
     pair_age_hours: float | None = None,
     ignore_stale_low_liq: bool = False,
 ) -> bool:
-    """Strict entry = STRONG only (Pillars 1, 2, 3, 4)."""
+    """Strict entry = STRONG only (all observable gates required)."""
     return (
         classify_signal(
             intel,
             min_unique_buyers=min_unique_buyers,
-            min_hot_buyers=min_hot_buyers,
             require_pair=require_pair,
             liquidity_usd=liquidity_usd,
             min_liquidity_usd=min_liquidity_usd,
             volume_usd=volume_usd,
             min_velocity=min_velocity,
+            min_buy_sell_ratio=min_buy_sell_ratio,
+            max_buyer_share=max_buyer_share,
             allow_unknown_liq=allow_unknown_liq,
+            allow_unknown_velocity=allow_unknown_velocity,
             pair_age_hours=pair_age_hours,
             ignore_stale_low_liq=ignore_stale_low_liq,
         )
         == SignalLevel.STRONG
     )
-
-
-def should_follow_launch_legacy(intel: LaunchIntel) -> bool:
-    """Legacy loose check (deprecated)."""
-    if intel.copytrap_risk == "high":
-        return False
-    return bool(intel.hot_funder_hits) or len(intel.buyers) >= 3
-
-
-def should_follow_launch_balanced(
-    intel: LaunchIntel,
-    *,
-    min_unique_buyers: int = 8,
-    min_hot_buyers: int = 2,
-    liquidity_usd: float | None = None,
-    min_liquidity_usd: float = 3000.0,
-    volume_usd: float | None = None,
-    min_velocity: float = 0.5,
-    allow_unknown_liq: bool = False,
-    pair_age_hours: float | None = None,
-    ignore_stale_low_liq: bool = False,
-) -> bool:
-    """STRONG or MEDIUM entry."""
-    level = classify_signal(
-        intel,
-        min_unique_buyers=min_unique_buyers,
-        min_hot_buyers=min_hot_buyers,
-        liquidity_usd=liquidity_usd,
-        min_liquidity_usd=min_liquidity_usd,
-        volume_usd=volume_usd,
-        min_velocity=min_velocity,
-        allow_unknown_liq=allow_unknown_liq,
-        pair_age_hours=pair_age_hours,
-        ignore_stale_low_liq=ignore_stale_low_liq,
-    )
-    return level in (SignalLevel.STRONG, SignalLevel.MEDIUM)

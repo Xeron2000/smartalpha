@@ -23,6 +23,8 @@ def get_pair_meta(mint: str) -> dict | None:
     sol.sort(key=lambda p: (p.get("volume", {}) or {}).get("h24") or 0, reverse=True)
     top = sol[0]
     pc = top.get("priceChange") or {}
+    volume = top.get("volume") or {}
+    txns = top.get("txns") or {}
     liq = (top.get("liquidity") or {}).get("usd")
     created = top.get("pairCreatedAt")
     out: dict[str, Any] = {
@@ -37,34 +39,12 @@ def get_pair_meta(mint: str) -> dict | None:
         v = pc.get(k)
         if v is not None:
             out[f"gain_{k}_pct"] = float(v)
+        v = volume.get(k)
+        if v is not None:
+            out[f"volume_{k}_usd"] = float(v)
+        counts = txns.get(k) or {}
+        if counts.get("buys") is not None:
+            out[f"buys_{k}"] = int(counts["buys"])
+        if counts.get("sells") is not None:
+            out[f"sells_{k}"] = int(counts["sells"])
     return out
-
-
-def price_snapshot(mint: str) -> dict | None:
-    meta = get_pair_meta(mint)
-    if not meta:
-        return None
-    return {
-        "price_usd": meta.get("price_usd"),
-        "liquidity_usd": meta.get("liquidity_usd"),
-        "gain_m5_pct": meta.get("gain_m5_pct"),
-        "gain_h1_pct": meta.get("gain_h1_pct"),
-        "gain_h6_pct": meta.get("gain_h6_pct"),
-        "gain_h24_pct": meta.get("gain_h24_pct"),
-        "ts": int(time.time()),
-        "source": "dexscreener",
-        "observed_at": int(time.time()),
-    }
-
-
-def dex_pair_address(mint: str) -> str | None:
-    meta = get_pair_meta(mint)
-    return meta.get("pair_address") if meta else None
-
-
-def dex_token_outcome(mint: str) -> dict | None:
-    return get_pair_meta(mint)
-
-
-def dex_price_snapshot(mint: str) -> dict | None:
-    return price_snapshot(mint)

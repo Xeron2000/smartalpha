@@ -34,32 +34,32 @@ $$\text{Impact}_{\text{entry}} \approx \frac{S}{2(L_0 + S)}, \quad \text{Impact}
     [支柱 2: 真实买盘熵]   ────(买家数 < 8 或 买卖比 < 1.5 拒绝)────> 拦截 78% 庄家对倒刷量
               │
               ▼
-    [支柱 3: 换手加速度]   ────(Volume / Reserve < 0.5 拒绝)─────> 拦截 85% 动量枯竭盘
+    [支柱 3: 成交速度]     ────(V5m / Reserve < 0.5 拒绝)─────> 拦截动量枯竭盘
               │
               ▼
-    [支柱 4: 摩擦与仓位阻尼] ───(锁定 $100-$250 仓位，滑点上限 ≤ 10%)
+    [支柱 4: 摩擦与仓位阻尼] ───(固定 0.05 SOL 仓位，滑点上限 ≤ 5%)
               │
               ▼
-      【Strict Signal 触发】 ───> 实测 1h 净 EV: +45% ~ +127% (胜率 88.2%)
+      【Strict Signal 触发】 ───> 仅产生可验证信号；是否有正 EV 必须由 OOS + execution-grade Paper 裁决
 ```
 
 ### 支柱 1：流动性安全防线 (Liquidity Guard)
-- **硬性规则**：$\text{Reserve}_{\text{USD}} \ge \$3,000$（或 $\ge 30\text{ SOL}$）。
+- **硬性规则**：代码默认 $\text{Reserve}_{\text{USD}} \ge \$3,000$；示例 live 配置收紧为 $\ge \$5,000$（或按等值 SOL 配置）。
 - **原理**：将进出价格冲击硬性压制在单边 $\le 1.6\%$ 以内。实测直接消除 100% 的即时归零/抽池盘，将策略净 EV 从 -2.83% 逆转为 **+127.93%**。
 
 ### 支柱 2：买方订单流熵与反女巫 (Orderflow Entropy & Anti-Sybil)
 - **硬性规则**：
   1. $t_0 \sim 180\text{s}$ 内**独立去重买家数** $N_{\text{buyers}} \ge 8$；
   2. 买卖交易笔数比 $\frac{\text{Buys}}{\max(1, \text{Sells})} \ge 1.5$；
-  3. 最大单买家持仓占比 $< 15\%$（配合现有的 `copytrap.py`）。
+  3. 最大单买家持仓占比 $< 15\%$（由 `launch_intel.py` 计算）。
 - **原理**：区分 Dev 少数自控钱包对倒刷量 vs 真实社区/Alpha 群资金的有机扩散。
 
-### 支柱 3：换手率与逃逸速度 (Turnover Velocity)
-- **硬性规则**：$\frac{V_{180\text{s}}}{\text{Reserve}} \ge 0.5$（或 $\frac{V_{1\text{h}}}{\text{Reserve}} \ge 1.0$）。
-- **原理**：代币只有在极短时间内涌入超过底池体量的外部资金，才能抵抗早期获利盘的砸盘引力，形成向上突破的动量。
+### 支柱 3：成交速度与逃逸速度 (Turnover Velocity)
+- **硬性规则**：当前 live 使用信号时可观测的 $\frac{V_{5\text{m}}}{\text{Reserve}} \ge 0.5$；历史实验必须记录成交量窗口与 `observed_at`。
+- **原理**：代币只有在短时间内涌入足够外部资金，才能抵抗早期获利盘的砸盘引力，形成向上突破的动量。
 
-### 支柱 4：摩擦阻尼与最优仓位 (Friction Damping & Sizing)
-- **硬性规则**：单笔投入 \$100 ~ \$250 等值 SOL，滑点容忍上限 10%。
+### 支柱 4：摩擦阻尼与固定仓位 (Friction Damping & Sizing)
+- **硬性规则**：Canary 固定投入 0.05 SOL/笔，最多 1 个持仓，日亏损上限 0.10 SOL，滑点容忍上限 5%；不使用 Kelly。
 - **原理**：
   - $<\$30$：Gas 和 Jito 固定损耗占比过高；
   - $>\$500$：在早期底池中自身击穿深度，退场滑点过大；
@@ -88,16 +88,17 @@ $$\text{Impact}_{\text{entry}} \approx \frac{S}{2(L_0 + S)}, \quad \text{Impact}
 
 | 策略组件 | 对应 SmartAlpha 代码模块 | 具体改动与责任 |
 | :--- | :--- | :--- |
-| **实时开盘监听** | `src/smartalpha/launch_watch.py` | Helius WebSocket 监听 Create 事件，并在 $t+90\text{s}, t+180\text{s}$ 获取流动性与买家数。 |
+| **实时开盘监听** | `src/smartalpha/launch_watch.py` | Helius WebSocket 监听 Create 事件，在有明确 launch timestamp 的前提下于 settle 后冻结信号时点特征。 |
 | **规则过滤引擎** | `src/smartalpha/signal_rules.py` | 增加 `LiquidityGuardRule`（底池 $\ge \$3\text{k}$）与 `EntropyDiffusionRule`（买家 $\ge 8$）。 |
-| **防夹与陷阱检测** | `src/smartalpha/copytrap.py` | 识别持仓集中度、转账受限与捆绑交易（Bundle Trap）。 |
-| **砸盘预警** | `src/smartalpha/dump_detect.py` | 实时监控母钱包/Top 3 持币人异常大单卖出，触发紧急止损。 |
+| **防夹与陷阱检测** | `src/smartalpha/launch_intel.py` | 识别买家集中度、同槽位捆绑和 fresh-wallet copytrap。 |
+| **执行与持仓** | `src/smartalpha/execution.py` | Paper/Shadow/Canary 门禁、外部 signer 幂等下单、持仓状态、TP/SL/追踪退出。 |
+| **退出与卖压保护** | `src/smartalpha/execution.py` | Canary 以 signer 可成交报价执行固定止损、分段止盈和追踪退出。 |
 | **Paper 延迟收益打标** | `src/smartalpha/paper_log.py` | 将现有的理论价格快照升级为**动态摩擦调整净价**（扣除冲击与 Gas）。 |
 | **OOS 验证与裁决** | `src/smartalpha/prove.py` | 运行样本外严格回测，自动输出 EV 曲线与裁决结论（PROVEN / FALSIFIED）。 |
 
 ---
 
-## 5. 链上实盘实证基准表（180 个 Launch 样本）
+## 5. 历史参考基准（180 个 Launch 样本；非当前证明）
 
 ```text
 ========================================================================================================
@@ -115,6 +116,6 @@ $$\text{Impact}_{\text{entry}} \approx \frac{S}{2(L_0 + S)}, \quad \text{Impact}
 
 ## 6. 实施路线图
 
-1. **Step 1（规则集成）**：将 `Reserve >= $3,000` 与 `Unique Buyers >= 8` 固化进 `signal_rules.py` 的 strict 信号判定中。
-2. **Step 2（摩擦模型升级）**：在 `paper_log.py` 的收益计算中注入价格冲击与 Gas 阻尼方程。
-3. **Step 3（自动 Prove 验证）**：运行 `uv run smartalpha watch-launches` 采集 50 笔实盘 Paper 样本，并执行 `uv run smartalpha prove` 产出最终验证报告。
+1. **Step 1（特征有效性）**：用 `signal_rules.py` 固化 Reserve、Unique Buyers、买卖比和可观测成交速度门禁。
+2. **Step 2（执行闭环）**：由 `execution.py` 通过独立 signer 以 Paper → Shadow → Canary 推进，持久化订单和持仓。
+3. **Step 3（自动 Prove 验证）**：历史数据必须显式标记 OOS；Paper 必须采集 t0/300s 的可执行报价后才允许 canary。

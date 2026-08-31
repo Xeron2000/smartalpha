@@ -5,8 +5,6 @@ import sqlite3
 import time
 from pathlib import Path
 
-from smartalpha.types import Side, TradeEvent
-
 
 class Store:
     def __init__(self, path: Path) -> None:
@@ -23,31 +21,6 @@ class Store:
         with self._conn() as c:
             c.executescript(
                 """
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    wallet TEXT NOT NULL,
-                    mint TEXT NOT NULL,
-                    side TEXT NOT NULL,
-                    sol_delta REAL NOT NULL,
-                    token_delta REAL NOT NULL,
-                    signature TEXT NOT NULL UNIQUE,
-                    ts INTEGER NOT NULL,
-                    tier TEXT,
-                    weight REAL
-                );
-                CREATE INDEX IF NOT EXISTS idx_events_mint_ts ON events(mint, ts);
-                CREATE INDEX IF NOT EXISTS idx_events_wallet_ts ON events(wallet, ts);
-                CREATE TABLE IF NOT EXISTS poll_state (
-                    wallet TEXT PRIMARY KEY,
-                    last_signature TEXT
-                );
-                CREATE TABLE IF NOT EXISTS alerts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    kind TEXT NOT NULL,
-                    mint TEXT,
-                    payload TEXT NOT NULL,
-                    ts INTEGER NOT NULL
-                );
                 CREATE TABLE IF NOT EXISTS seen_mints (
                     mint TEXT PRIMARY KEY,
                     signature TEXT,
@@ -63,15 +36,49 @@ class Store:
                     signature TEXT,
                     recommendation TEXT,
                     copytrap_risk TEXT,
-                    hot_organic_buyers INTEGER,
-                    hot_funders_json TEXT,
                     liquidity_usd REAL,
                     strict_signal INTEGER NOT NULL DEFAULT 0,
                     price_usd REAL,
+                    buy_count INTEGER NOT NULL DEFAULT 0,
+                    sell_count INTEGER NOT NULL DEFAULT 0,
+                    top_buyer_share REAL NOT NULL DEFAULT 0,
+                    volume_usd REAL,
                     snapshots_json TEXT NOT NULL DEFAULT '{}',
                     notes TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_paper_signal_ts ON paper_signals(signal_ts);
+                CREATE TABLE IF NOT EXISTS execution_orders (
+                    idempotency_key TEXT PRIMARY KEY,
+                    mint TEXT NOT NULL,
+                    side TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    signal_ts INTEGER NOT NULL,
+                    amount_sol REAL,
+                    token_amount REAL,
+                    slippage_bps INTEGER,
+                    tx_signature TEXT,
+                    realized_pnl_sol REAL,
+                    response_json TEXT,
+                    error TEXT,
+                    created_ts INTEGER NOT NULL,
+                    updated_ts INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_execution_orders_mint ON execution_orders(mint, created_ts);
+                CREATE TABLE IF NOT EXISTS positions (
+                    mint TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    token_amount REAL NOT NULL,
+                    entry_sol REAL NOT NULL,
+                    entry_price_usd REAL,
+                    opened_ts INTEGER NOT NULL,
+                    updated_ts INTEGER NOT NULL,
+                    peak_return_pct REAL NOT NULL DEFAULT 0,
+                    tp1_done INTEGER NOT NULL DEFAULT 0,
+                    tp2_done INTEGER NOT NULL DEFAULT 0,
+                    last_quote_ts INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
                 """
             )
             self._migrate(c)
@@ -97,10 +104,12 @@ class Store:
             for name, decl in (
                 ("strict_signal", "INTEGER NOT NULL DEFAULT 0"),
                 ("price_usd", "REAL"),
+                ("buy_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("sell_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("top_buyer_share", "REAL NOT NULL DEFAULT 0"),
+                ("volume_usd", "REAL"),
                 ("snapshots_json", "TEXT NOT NULL DEFAULT '{}'"),
                 ("notes", "TEXT"),
-                ("hot_funders_json", "TEXT"),
-                ("hot_organic_buyers", "INTEGER"),
                 ("liquidity_usd", "REAL"),
                 ("copytrap_risk", "TEXT"),
                 ("recommendation", "TEXT"),
@@ -126,87 +135,6 @@ class Store:
                 "UPDATE seen_mints SET status='done' WHERE mint=?", (mint,)
             )
 
-    def is_mint_seen(self, mint: str) -> bool:
-        with self._conn() as c:
-            row = c.execute(
-                "SELECT 1 FROM seen_mints WHERE mint = ? AND status='done'", (mint,)
-            ).fetchone()
-        return row is not None
-
-    def list_seen_mints(self, limit: int = 1000) -> list[tuple[str, int]]:
-        """Outcome-blind research universe: Helius launch ledger ordered by ts."""
-        with self._conn() as c:
-            rows = c.execute("SELECT mint, ts FROM seen_mints ORDER BY ts ASC LIMIT ?", (limit,)).fetchall()
-            return [(r["mint"], int(r["ts"])) for r in rows]
-
-    def mark_mint_seen(self, mint: str, signature: str, creator: str) -> None:
-        # ponytail: backward-compat shim, new code uses try_seen_mint
-        with self._conn() as c:
-            c.execute(
-                "INSERT OR IGNORE INTO seen_mints(mint,signature,creator,status,ts) "
-                "VALUES (?,?,?,'done',?)",
-                (mint, signature, creator, int(time.time())),
-            )
-
-    def save_event(self, ev: TradeEvent) -> bool:
-        with self._conn() as c:
-            try:
-                c.execute(
-                    """
-                    INSERT INTO events(wallet,mint,side,sol_delta,token_delta,signature,ts,tier,weight)
-                    VALUES (?,?,?,?,?,?,?,?,?)
-                    """,
-                    (
-                        ev.wallet,
-                        ev.mint,
-                        ev.side.value,
-                        ev.sol_delta,
-                        ev.token_delta,
-                        ev.signature,
-                        ev.ts,
-                        ev.tier,
-                        ev.weight,
-                    ),
-                )
-                return True
-            except sqlite3.IntegrityError:
-                return False
-
-    def events_since(self, since_ts: int, mint: str | None = None) -> list[TradeEvent]:
-        q = "SELECT * FROM events WHERE ts >= ?"
-        args: list[object] = [since_ts]
-        if mint:
-            q += " AND mint = ?"
-            args.append(mint)
-        q += " ORDER BY ts ASC"
-        with self._conn() as c:
-            rows = c.execute(q, args).fetchall()
-        return [_row_to_event(r) for r in rows]
-
-    def get_last_sig(self, wallet: str) -> str | None:
-        with self._conn() as c:
-            row = c.execute(
-                "SELECT last_signature FROM poll_state WHERE wallet = ?", (wallet,)
-            ).fetchone()
-        return row["last_signature"] if row else None
-
-    def set_last_sig(self, wallet: str, sig: str) -> None:
-        with self._conn() as c:
-            c.execute(
-                """
-                INSERT INTO poll_state(wallet, last_signature) VALUES (?,?)
-                ON CONFLICT(wallet) DO UPDATE SET last_signature=excluded.last_signature
-                """,
-                (wallet, sig),
-            )
-
-    def save_alert(self, kind: str, mint: str | None, payload: str, ts: int) -> None:
-        with self._conn() as c:
-            c.execute(
-                "INSERT INTO alerts(kind,mint,payload,ts) VALUES (?,?,?,?)",
-                (kind, mint, payload, ts),
-            )
-
     def upsert_paper_signal(
         self,
         *,
@@ -216,13 +144,15 @@ class Store:
         signature: str,
         recommendation: str,
         copytrap_risk: str,
-        hot_organic_buyers: int,
-        hot_funders: list[str],
         liquidity_usd: float | None,
         strict_signal: bool,
         price_usd: float | None,
         snapshots: dict[str, dict],
         notes: str = "",
+        buy_count: int = 0,
+        sell_count: int = 0,
+        top_buyer_share: float = 0.0,
+        volume_usd: float | None = None,
     ) -> None:
         # enforce Research provenance: missing source/observed_at is an error — never fabricate
         for _k, snap in (snapshots or {}).items():
@@ -236,18 +166,21 @@ class Store:
                 """
                 INSERT INTO paper_signals(
                     mint, signal_ts, creator, signature, recommendation, copytrap_risk,
-                    hot_organic_buyers, hot_funders_json, liquidity_usd, strict_signal,
-                    price_usd, snapshots_json, notes
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    liquidity_usd, strict_signal,
+                    price_usd, buy_count, sell_count, top_buyer_share, volume_usd,
+                    snapshots_json, notes
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(mint) DO UPDATE SET
                     signal_ts=excluded.signal_ts,
                     recommendation=excluded.recommendation,
                     copytrap_risk=excluded.copytrap_risk,
-                    hot_organic_buyers=excluded.hot_organic_buyers,
-                    hot_funders_json=excluded.hot_funders_json,
                     liquidity_usd=excluded.liquidity_usd,
                     strict_signal=excluded.strict_signal,
                     price_usd=excluded.price_usd,
+                    buy_count=excluded.buy_count,
+                    sell_count=excluded.sell_count,
+                    top_buyer_share=excluded.top_buyer_share,
+                    volume_usd=excluded.volume_usd,
                     snapshots_json=excluded.snapshots_json,
                     notes=excluded.notes
                 """,
@@ -258,15 +191,43 @@ class Store:
                     signature,
                     recommendation,
                     copytrap_risk,
-                    hot_organic_buyers,
-                    json.dumps(hot_funders),
                     liquidity_usd,
                     1 if strict_signal else 0,
                     price_usd,
+                    buy_count,
+                    sell_count,
+                    top_buyer_share,
+                    volume_usd,
                     json.dumps(snapshots),
                     notes,
                 ),
             )
+
+    def merge_paper_snapshot(
+        self, mint: str, key: str, snapshot: dict, *, price_usd: float | None = None
+    ) -> None:
+        row = self.get_paper_signal(mint)
+        if not row:
+            return
+        snapshots = json.loads(row.get("snapshots_json") or "{}")
+        snapshots[key] = snapshot
+        self.upsert_paper_signal(
+            mint=mint,
+            signal_ts=int(row["signal_ts"]),
+            creator=row.get("creator") or "",
+            signature=row.get("signature") or "",
+            recommendation=row.get("recommendation") or "",
+            copytrap_risk=row.get("copytrap_risk") or "",
+            liquidity_usd=row.get("liquidity_usd"),
+            strict_signal=bool(row.get("strict_signal")),
+            price_usd=price_usd if price_usd is not None else row.get("price_usd"),
+            snapshots=snapshots,
+            notes=row.get("notes") or "",
+            buy_count=int(row.get("buy_count") or 0),
+            sell_count=int(row.get("sell_count") or 0),
+            top_buyer_share=float(row.get("top_buyer_share") or 0.0),
+            volume_usd=row.get("volume_usd"),
+        )
 
     def list_paper_signals(self, limit: int = 500) -> list[dict]:
         with self._conn() as c:
@@ -281,17 +242,179 @@ class Store:
             row = c.execute("SELECT * FROM paper_signals WHERE mint = ?", (mint,)).fetchone()
         return dict(row) if row else None
 
+    def create_execution_order(
+        self,
+        *,
+        idempotency_key: str,
+        mint: str,
+        side: str,
+        mode: str,
+        status: str,
+        signal_ts: int,
+        amount_sol: float | None,
+        token_amount: float | None,
+        slippage_bps: int,
+        error: str | None = None,
+    ) -> bool:
+        now = int(time.time())
+        with self._conn() as c:
+            cur = c.execute(
+                """
+                INSERT OR IGNORE INTO execution_orders(
+                    idempotency_key, mint, side, mode, status, signal_ts,
+                    amount_sol, token_amount, slippage_bps, error, created_ts, updated_ts
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    idempotency_key,
+                    mint,
+                    side,
+                    mode,
+                    status,
+                    signal_ts,
+                    amount_sol,
+                    token_amount,
+                    slippage_bps,
+                    error,
+                    now,
+                    now,
+                ),
+            )
+            return cur.rowcount > 0
 
-def _row_to_event(r: sqlite3.Row) -> TradeEvent:
+    def update_execution_order(self, idempotency_key: str, **fields: object) -> None:
+        allowed = {
+            "status",
+            "token_amount",
+            "tx_signature",
+            "realized_pnl_sol",
+            "response_json",
+            "error",
+        }
+        values = {k: v for k, v in fields.items() if k in allowed}
+        if not values:
+            return
+        values["updated_ts"] = int(time.time())
+        setters = ", ".join(f"{key} = ?" for key in values)
+        with self._conn() as c:
+            c.execute(
+                f"UPDATE execution_orders SET {setters} WHERE idempotency_key = ?",
+                (*values.values(), idempotency_key),
+            )
 
-    return TradeEvent(
-        wallet=r["wallet"],
-        mint=r["mint"],
-        side=Side(r["side"]),
-        sol_delta=r["sol_delta"],
-        token_delta=r["token_delta"],
-        signature=r["signature"],
-        ts=r["ts"],
-        tier=r["tier"] or "accumulator",
-        weight=float(r["weight"] or 1.0),
-    )
+    def get_execution_order(self, idempotency_key: str) -> dict | None:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT * FROM execution_orders WHERE idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_execution_orders(
+        self, *, since_ts: int = 0, mint: str | None = None
+    ) -> list[dict]:
+        query = "SELECT * FROM execution_orders WHERE created_ts >= ?"
+        args: list[object] = [since_ts]
+        if mint:
+            query += " AND mint = ?"
+            args.append(mint)
+        query += " ORDER BY created_ts ASC"
+        with self._conn() as c:
+            rows = c.execute(query, args).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert_position(
+        self,
+        *,
+        mint: str,
+        status: str,
+        token_amount: float,
+        entry_sol: float,
+        entry_price_usd: float | None,
+        opened_ts: int,
+        peak_return_pct: float = 0.0,
+        tp1_done: bool = False,
+        tp2_done: bool = False,
+        last_quote_ts: int | None = None,
+    ) -> None:
+        now = int(time.time())
+        with self._conn() as c:
+            c.execute(
+                """
+                INSERT INTO positions(
+                    mint, status, token_amount, entry_sol, entry_price_usd,
+                    opened_ts, updated_ts, peak_return_pct, tp1_done, tp2_done, last_quote_ts
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(mint) DO UPDATE SET
+                    status=excluded.status,
+                    token_amount=excluded.token_amount,
+                    entry_sol=excluded.entry_sol,
+                    entry_price_usd=excluded.entry_price_usd,
+                    updated_ts=excluded.updated_ts,
+                    peak_return_pct=excluded.peak_return_pct,
+                    tp1_done=excluded.tp1_done,
+                    tp2_done=excluded.tp2_done,
+                    last_quote_ts=excluded.last_quote_ts
+                """,
+                (
+                    mint,
+                    status,
+                    token_amount,
+                    entry_sol,
+                    entry_price_usd,
+                    opened_ts,
+                    now,
+                    peak_return_pct,
+                    1 if tp1_done else 0,
+                    1 if tp2_done else 0,
+                    last_quote_ts,
+                ),
+            )
+
+    def update_position(self, mint: str, **fields: object) -> None:
+        allowed = {
+            "status",
+            "token_amount",
+            "entry_sol",
+            "peak_return_pct",
+            "tp1_done",
+            "tp2_done",
+            "last_quote_ts",
+        }
+        values = {k: v for k, v in fields.items() if k in allowed}
+        if not values:
+            return
+        values["updated_ts"] = int(time.time())
+        setters = ", ".join(
+            f"{key} = ?" for key in values
+        )
+        with self._conn() as c:
+            c.execute(
+                f"UPDATE positions SET {setters} WHERE mint = ?",
+                (*values.values(), mint),
+            )
+
+    def get_position(self, mint: str) -> dict | None:
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM positions WHERE mint = ?", (mint,)).fetchone()
+        return dict(row) if row else None
+
+    def list_open_positions(self) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT * FROM positions WHERE status = 'open' ORDER BY opened_ts ASC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def today_realized_loss_sol(self) -> float:
+        start = int(time.time()) // 86400 * 86400
+        with self._conn() as c:
+            row = c.execute(
+                """
+                SELECT COALESCE(SUM(CASE WHEN realized_pnl_sol < 0 THEN -realized_pnl_sol ELSE 0 END), 0)
+                FROM execution_orders
+                WHERE side='exit' AND created_ts >= ?
+                """,
+                (start,),
+            ).fetchone()
+        return float(row[0] or 0.0)

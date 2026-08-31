@@ -1,7 +1,7 @@
 [project]
 name = "smartalpha"
 version = "0.2.0"
-description = "Solana launch microstructure alpha & sniper engine: liquidity guard, orderflow entropy, turnover velocity, prove"
+description = "Solana launch microstructure signals, proof, and fail-closed Pump execution gate"
 readme = "README.md"
 authors = [{ name = "Xeron", email = "xeron2333@gmail.com" }]
 requires-python = ">=3.12"

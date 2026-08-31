@@ -1,3 +1,3 @@
-"""Smart money parasite toolkit: cluster alerts, dump detection, paper backtest."""
+"""Solana launch microstructure signals, proof, and fail-closed execution."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

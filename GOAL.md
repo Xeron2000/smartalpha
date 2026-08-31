@@ -19,7 +19,7 @@ Last updated: 2026-08-31
 ### Empirical Status
 1. **FALSIFIED**: Blind sniping without liquidity/entropy filters (Net EV: -17.77% @ 5m, -2.83% @ 1h).
 2. **FALSIFIED**: Pure funder/smart-money parasite tracking (prone to sybil wash trading, copytraps, and negative OOS EV).
-3. **PROVEN (Active)**: First-Principles Four Pillars (Reserve $\ge \$3,000$, Unique Buyers $\ge 8$, $V/\text{Reserve} \ge 0.5$, Sizing \$100-\$250) producing net positive EV (+45% ~ +127%) with 0% instant rug rate.
+3. **NOT PROVEN (current repository)**: First-Principles Four Pillars (Reserve $\ge \$3,000$, Unique Buyers $\ge 8$, $V/\text{Reserve} \ge 0.5$, fixed 0.05 SOL Canary sizing); the local proof is not yet complete.
 
 ---
 
@@ -29,7 +29,7 @@ SmartAlpha focuses strictly on **Solana early-launch microstructural alpha**:
 
 1. **Liquidity Guard**: Reserve depth vs trade impact $\Delta P \approx \frac{S}{2L}$;
 2. **Orderflow Entropy**: Unique buyer dispersion vs single-wallet wash trading;
-3. **Turnover Velocity**: 180s/1h volume vs reserve ratio for escape velocity;
+3. **Turnover Velocity**: signal-time observable volume vs reserve ratio for escape velocity;
 4. **Friction Damping**: Dynamic price impact, DEX fee, and Gas deduction;
 5. **Execution Horizon**: Optimal 15m–60m laddered take-profit and momentum exits.
 
@@ -39,7 +39,7 @@ Out of scope for V1 unless a result above creates a concrete reason to add them:
 - social-sentiment LLM scoring;
 - news prediction;
 - multi-chain expansion;
-- full autonomous execution;
+- unrestricted autonomous execution; staged Paper/Shadow/Canary execution remains fail-closed;
 - hundreds of unrelated strategy families.
 
 **Rule:** go deeper before going wider.
@@ -439,9 +439,9 @@ Negative results must remain searchable.
 
 ---
 
-## 11. V1 Deliverable
+## 11. Future Research Factory (not in the current CLI)
 
-The first Research Factory milestone is complete when this command (or an equivalent single entry point) can run end to end:
+This backlog is intentionally not part of the current launch/Paper/Prove runtime. If it is reintroduced, the first milestone is:
 
 ```bash
 uv run smartalpha research cycle

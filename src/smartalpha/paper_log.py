@@ -4,17 +4,13 @@ import asyncio
 import csv
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from smartalpha.config import Settings
 from smartalpha.db import Store
-from smartalpha.providers.dexscreener import dex_price_snapshot
-from smartalpha.signal_rules import (
-    calculate_friction_net_gain,
-    classify_signal,
-    hot_organic_buyers,
-    should_follow_launch,
-)
+from smartalpha.providers.dexscreener import get_pair_meta
+from smartalpha.signal_rules import calculate_friction_net_gain, classify_signal
 
 
 @dataclass
@@ -28,6 +24,10 @@ class PaperSignalInput:
     intel: object
     liquidity_usd: float | None
     notes: list[str]
+    buy_count: int = 0
+    sell_count: int = 0
+    top_buyer_share: float = 0.0
+    volume_usd: float | None = None
 
 
 def log_paper_signal(
@@ -43,44 +43,29 @@ def log_paper_signal(
 
     snap0: dict = {}
     try:
-        snap0 = dex_price_snapshot(inp.mint) or {}
+        snap0 = get_pair_meta(inp.mint) or {}
     except Exception as exc:
         extra_notes.append(f"snap0_err={type(exc).__name__}")
 
     try:
-        strict = should_follow_launch(
-            inp.intel,
-            min_hot_buyers=s.signal_min_hot_buyers,
-            liquidity_usd=inp.liquidity_usd,
-            min_liquidity_usd=s.signal_min_liquidity_usd,
-            allow_unknown_liq=s.signal_allow_unknown_liq,
-            ignore_stale_low_liq=False,  # live paper: current liq is entry-relevant
-        )
-    except Exception as exc:
-        strict = False
-        extra_notes.append(f"strict_err={type(exc).__name__}")
-
-    try:
         level = classify_signal(
             inp.intel,
-            min_hot_buyers=s.signal_min_hot_buyers,
             liquidity_usd=inp.liquidity_usd,
             min_liquidity_usd=s.signal_min_liquidity_usd,
+            volume_usd=inp.volume_usd,
+            min_velocity=s.signal_min_velocity,
+            min_buy_sell_ratio=s.signal_min_buy_sell_ratio,
+            max_buyer_share=s.signal_max_buyer_share,
             allow_unknown_liq=s.signal_allow_unknown_liq,
+            allow_unknown_velocity=s.signal_allow_unknown_velocity,
             ignore_stale_low_liq=False,
         ).value
-    except Exception:
+        strict = level == "strong"
+    except Exception as exc:
         level = "unknown"
+        strict = False
+        extra_notes.append(f"signal_err={type(exc).__name__}")
     extra_notes.append(f"level={level}")
-
-    try:
-        hot_n = len(hot_organic_buyers(inp.intel))
-    except Exception:
-        hot_n = 0
-    try:
-        hot_list = list(getattr(inp.intel, "hot_funder_hits", None) or [])
-    except Exception:
-        hot_list = []
 
     delays = s.paper_snapshot_delays or (0, 90, 180, 300, 900)
     snapshots: dict[str, dict] = {}
@@ -95,13 +80,15 @@ def log_paper_signal(
         signature=inp.signature,
         recommendation=inp.recommendation,
         copytrap_risk=inp.copytrap_risk,
-        hot_organic_buyers=hot_n,
-        hot_funders=hot_list,
         liquidity_usd=inp.liquidity_usd,
         strict_signal=strict,
         price_usd=snap0.get("price_usd"),
         snapshots=snapshots,
         notes="; ".join(notes),
+        buy_count=inp.buy_count,
+        sell_count=inp.sell_count,
+        top_buyer_share=inp.top_buyer_share,
+        volume_usd=inp.volume_usd,
     )
     return inp.signal_ts
 
@@ -112,6 +99,7 @@ async def schedule_paper_snapshots(
     *,
     settings: Settings | None = None,
     store: Store | None = None,
+    snapshot_provider: Callable[[int], dict | None] | None = None,
 ) -> None:
     s = settings or Settings()
     store = store or Store(s.db_path)
@@ -123,7 +111,8 @@ async def schedule_paper_snapshots(
             if now < signal_ts + delay:
                 continue
             try:
-                snap = await asyncio.to_thread(dex_price_snapshot, mint)
+                fetch = snapshot_provider or (lambda _delay: get_pair_meta(mint))
+                snap = await asyncio.to_thread(fetch, delay)
             except Exception:
                 snap = None
             if snap:
@@ -158,7 +147,7 @@ def catch_up_paper_snapshots(
             if now < signal_ts + delay:
                 continue
             try:
-                snap = dex_price_snapshot(mint)
+                snap = get_pair_meta(mint)
             except Exception:
                 errors += 1
                 continue
@@ -204,26 +193,7 @@ def paper_health(
 
 
 def _append_snapshot(store: Store, mint: str, key: str, snap: dict) -> None:
-    row = store.get_paper_signal(mint)
-    if not row:
-        return
-    snaps = json.loads(row.get("snapshots_json") or "{}")
-    snaps[key] = snap
-    store.upsert_paper_signal(
-        mint=mint,
-        signal_ts=int(row["signal_ts"]),
-        creator=row.get("creator") or "",
-        signature=row.get("signature") or "",
-        recommendation=row.get("recommendation") or "",
-        copytrap_risk=row.get("copytrap_risk") or "",
-        hot_organic_buyers=int(row.get("hot_organic_buyers") or 0),
-        hot_funders=json.loads(row.get("hot_funders_json") or "[]"),
-        liquidity_usd=row.get("liquidity_usd"),
-        strict_signal=bool(row.get("strict_signal")),
-        price_usd=row.get("price_usd"),
-        snapshots=snaps,
-        notes=row.get("notes") or "",
-    )
+    store.merge_paper_snapshot(mint, key, snap)
 
 
 def export_paper_csv(
@@ -242,7 +212,10 @@ def export_paper_csv(
         "strict_signal",
         "recommendation",
         "copytrap_risk",
-        "hot_organic_buyers",
+        "buy_count",
+        "sell_count",
+        "top_buyer_share",
+        "volume_usd",
         "liquidity_usd",
         "price_t0_usd",
     ]
@@ -272,7 +245,10 @@ def export_paper_csv(
                 "strict_signal": row["strict_signal"],
                 "recommendation": row["recommendation"],
                 "copytrap_risk": row["copytrap_risk"],
-                "hot_organic_buyers": row["hot_organic_buyers"],
+                "buy_count": row.get("buy_count", 0),
+                "sell_count": row.get("sell_count", 0),
+                "top_buyer_share": row.get("top_buyer_share", 0.0),
+                "volume_usd": row.get("volume_usd"),
                 "liquidity_usd": row_liq,
                 "price_t0_usd": p0,
             }

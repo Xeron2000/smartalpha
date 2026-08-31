@@ -48,6 +48,7 @@ data/run_mints.txt
 data/test3.txt
 
 # Local editor / OS
+.pi-glla/
 .idea/
 .vscode/
 *.swp
