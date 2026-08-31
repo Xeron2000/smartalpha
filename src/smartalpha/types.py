@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 
 
 class Side(StrEnum):
     BUY = "buy"
     SELL = "sell"
-
-
-@dataclass(frozen=True)
-class WalletConfig:
-    address: str
-    tier: str = "accumulator"
-    weight: float = 1.0
-    label: str = ""
 
 
 @dataclass(frozen=True)
@@ -28,16 +20,6 @@ class TradeEvent:
     ts: int
     tier: str = "accumulator"
     weight: float = 1.0
-
-
-@dataclass
-class ClusterAlert:
-    mint: str
-    wallets: list[str]
-    score: float
-    side: Side
-    ts: int
-    events: list[TradeEvent] = field(default_factory=list)
 
 
 @dataclass
